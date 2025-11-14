@@ -26,7 +26,7 @@ import DeviceDetailScreen from "./components/DeviceDetailScreen";
 import NotificationsScreen from "./components/NotificationsScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import HomeScreen from "./components/HomeScreen";
-import DashboardScreen from "./components/DashbaordScreen";
+import DashboardScreen from "./components/DashboardScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();

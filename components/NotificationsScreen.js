@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import {
   View,
   Text,
@@ -11,18 +11,20 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { AuthContext } from "../context/AuthContext"; // ✅ correct
-
+import { AuthContext } from "../context/AuthContext";
+import axios from "axios";
+import { API_BASE } from "../screens/config";
 
 //if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
  // UIManager.setLayoutAnimationEnabledExperimental(true);
 //}
 
 export default function NotificationsScreen() {
-  const { isDarkTheme } = useContext(AuthContext);
+  const { isDarkTheme, userToken, logout } = useContext(AuthContext);
   const theme = isDarkTheme ? "dark" : "light";
 
   const [notifications, setNotifications] = useState([]);
@@ -31,68 +33,187 @@ export default function NotificationsScreen() {
   const [expanded, setExpanded] = useState(null);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [lastUpdated, setLastUpdated] = useState(null);
+  const eventSourceRef = useRef(null);
 
-  // Simulated data loader (replace this with your Python backend API later)
+  // Load notifications from API
   const loadNotifications = async () => {
+    if (!userToken) return;
+    
     try {
-      // Simulated delay (mimic backend fetch)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Example dummy data
-      const data = [
-        {
-          id: "1",
-          title: "Temperature Alert",
-          message: "Device DHT11 exceeded safe threshold (35°C)",
-          type: "warning",
-          details:
-            "Sensor ID: DHT11_01\nLocation: Lab 2\nThreshold: 35°C\nCurrent: 38°C",
-          time: "10:42 AM",
-        },
-        {
-          id: "2",
-          title: "Device Online",
-          message: "ESP32 connected successfully to server",
-          type: "info",
-          details:
-            "Device IP: 192.168.29.101\nConnection: Stable\nSignal: -64 dBm",
-          time: "10:30 AM",
-        },
-        {
-          id: "3",
-          title: "New Firmware Update",
-          message: "Version 1.2.3 ready for installation.",
-          type: "update",
-          details:
-            "Release Notes:\n• Improved Modbus stability\n• Fixed RS485 timing issue",
-          time: "10:15 AM",
-        },
-      ];
-
-      setNotifications(data);
+      const response = await axios.get(`${API_BASE}/notifications`, {
+        headers: { Authorization: `Bearer ${userToken}` },
+        params: { limit: 50 },
+      });
+      
+      const data = response.data?.notifications || [];
+      // Format notifications for display
+      const formatted = data.map((notif) => ({
+        id: notif._id || notif.id,
+        title: notif.title,
+        message: notif.message,
+        type: notif.type || "info",
+        details: notif.details || "",
+        time: notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : ""),
+        read: notif.read || false,
+      }));
+      
+      setNotifications(formatted);
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Failed to load notifications:", err);
+      if (err.response?.status === 401) logout();
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Setup SSE connection for real-time notifications
   useEffect(() => {
+    if (!userToken) return;
+
+    // Load initial notifications
     loadNotifications();
-    const interval = setInterval(loadNotifications, 10000);
+    
+    // Setup SSE connection
+    const setupSSE = () => {
+      try {
+        // For React Native, we need to use EventSource polyfill or fetch-based SSE
+        // Using fetch with streaming for React Native compatibility
+        const connectSSE = async () => {
+          try {
+            const response = await fetch(`${API_BASE}/notifications/stream`, {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${userToken}`,
+                Accept: "text/event-stream",
+              },
+            });
+
+            if (!response.ok) {
+              throw new Error(`SSE connection failed: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            const readStream = async () => {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  const chunk = decoder.decode(value);
+                  const lines = chunk.split("\n");
+
+                  for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                      try {
+                        const data = JSON.parse(line.substring(6));
+                        
+                        if (data.type === "notification") {
+                          // New notification received
+                          const notif = data.notification;
+                          setNotifications((prev) => [
+                            {
+                              id: notif.id,
+                              title: notif.title,
+                              message: notif.message,
+                              type: notif.type || "info",
+                              details: notif.details || "",
+                              time: notif.time || new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+                              read: false,
+                            },
+                            ...prev,
+                          ]);
+                          setLastUpdated(new Date());
+                        } else if (data.type === "initial") {
+                          // Initial notifications
+                          if (data.notifications && data.notifications.length > 0) {
+                            const formatted = data.notifications.map((notif) => ({
+                              id: notif.id || notif._id,
+                              title: notif.title,
+                              message: notif.message,
+                              type: notif.type || "info",
+                              details: notif.details || "",
+                              time: notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : ""),
+                              read: notif.read || false,
+                            }));
+                            setNotifications((prev) => {
+                              const existingIds = new Set(prev.map((n) => n.id));
+                              const newNotifs = formatted.filter((n) => !existingIds.has(n.id));
+                              return [...newNotifs, ...prev];
+                            });
+                          }
+                        }
+                      } catch (parseErr) {
+                        console.error("Error parsing SSE data:", parseErr);
+                      }
+                    }
+                  }
+                }
+              } catch (readErr) {
+                console.error("SSE read error:", readErr);
+                // Reconnect after delay
+                setTimeout(connectSSE, 5000);
+              }
+            };
+
+            readStream();
+          } catch (err) {
+            console.error("SSE connection error:", err);
+            // Retry connection after delay
+            setTimeout(connectSSE, 5000);
+          }
+        };
+
+        connectSSE();
+      } catch (err) {
+        console.error("SSE setup error:", err);
+      }
+    };
+
+    setupSSE();
+    
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 800,
       useNativeDriver: true,
     }).start();
-    return () => clearInterval(interval);
-  }, []);
+
+    return () => {
+      // Cleanup SSE connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, [userToken]);
 
   const onRefresh = () => {
     setRefreshing(true);
     loadNotifications();
+  };
+
+  const markAsRead = async (notificationId) => {
+    if (!userToken) return;
+    
+    try {
+      await axios.put(
+        `${API_BASE}/notifications/${notificationId}/read`,
+        {},
+        { headers: { Authorization: `Bearer ${userToken}` } }
+      );
+      
+      setNotifications((prev) =>
+        prev.map((notif) =>
+          notif.id === notificationId ? { ...notif, read: true } : notif
+        )
+      );
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+      if (err.response?.status === 401) logout();
+    }
   };
 
   const renderIcon = (type) => {
@@ -101,6 +222,10 @@ export default function NotificationsScreen() {
         return { name: "alert-circle", color: "#ffcc00" };
       case "info":
         return { name: "information-circle", color: "#4dabf7" };
+      case "success":
+        return { name: "checkmark-circle", color: "#00e676" };
+      case "error":
+        return { name: "close-circle", color: "#ff3b30" };
       case "update":
         return { name: "arrow-up-circle", color: "#00e676" };
       default:
@@ -118,7 +243,13 @@ export default function NotificationsScreen() {
     const isExpanded = expanded === item.id;
 
     return (
-      <TouchableOpacity activeOpacity={0.8} onPress={() => toggleExpand(item.id)}>
+      <TouchableOpacity 
+        activeOpacity={0.8} 
+        onPress={() => {
+          toggleExpand(item.id);
+          if (!item.read) markAsRead(item.id);
+        }}
+      >
         <Animated.View
           style={[
             styles.card,
@@ -126,6 +257,7 @@ export default function NotificationsScreen() {
               backgroundColor:
                 theme === "dark" ? "rgba(255,255,255,0.05)" : "#ffffffcc",
               borderColor: theme === "dark" ? "#333" : "#ccc",
+              opacity: item.read ? 0.7 : 1,
             },
           ]}
         >

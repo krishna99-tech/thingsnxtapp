@@ -15,10 +15,11 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { AuthContext } from "../context/AuthContext";
 
 export default function DevicesScreen({ navigation }) {
-  const { userToken, isDarkTheme, devices, fetchDevices, addDevice } =
+  const { userToken, isDarkTheme, devices, fetchDevices, addDevice, deleteDevice } =
     useContext(AuthContext);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -42,6 +43,15 @@ export default function DevicesScreen({ navigation }) {
   useEffect(() => {
     if (userToken) fetchDevices();
   }, [userToken]);
+
+  // Refresh devices when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userToken) {
+        fetchDevices();
+      }
+    }, [userToken])
+  );
 
   const handleAddDevice = async () => {
     if (!deviceName || !deviceType) {

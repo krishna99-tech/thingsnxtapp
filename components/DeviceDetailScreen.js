@@ -85,8 +85,15 @@ export default function DeviceDetailScreen({ route, navigation }) {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          await deleteDevice(device._id);
-          navigation.goBack();
+          try {
+            const deviceId = device._id || device.id;
+            await deleteDevice(deviceId);
+            Alert.alert("✅ Success", "Device deleted successfully");
+            navigation.goBack();
+          } catch (err) {
+            console.error("Delete device error:", err);
+            // Error alert is already shown in deleteDevice
+          }
         },
       },
     ]);
@@ -142,16 +149,23 @@ export default function DeviceDetailScreen({ route, navigation }) {
     try {
       const { key, value } = selectedTelemetry;
 
+      const payload = {
+        dashboard_id: dashboardId,
+        device_id: device._id,
+        type: selectedWidgetType,
+        label: key,
+      };
+
+      if (selectedWidgetType === "led") {
+        payload.value = value ? 1 : 0;
+      } else {
+        payload.value = value;
+        payload.config = { key };
+      }
+
       await axios.post(
         `${API_BASE}/widgets`,
-        {
-          dashboard_id: dashboardId,
-          device_id: device._id,
-          type: selectedWidgetType,
-          label: key,
-          value: value,           // static/original value
-          config: { key: key },   // important: export telemetry key in config for real-time updates
-        },
+        payload,
         { headers: { Authorization: `Bearer ${userToken}` } }
       );
 

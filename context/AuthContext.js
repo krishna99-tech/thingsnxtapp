@@ -167,10 +167,20 @@ export const AuthProvider = ({ children }) => {
   const deleteDevice = async (deviceId) => {
     try {
       await API.deleteDevice(deviceId);
-      setDevices((prev) => prev.filter((d) => d.id !== deviceId));
-      Alert.alert("Device deleted");
+      // Update state immediately - handle both id and _id formats
+      setDevices((prev) => 
+        prev.filter((d) => {
+          const dId = d.id || d._id;
+          const targetId = deviceId;
+          return dId !== targetId && String(dId) !== String(targetId);
+        })
+      );
+      // Don't show alert here - let the calling component handle it
+      return true;
     } catch (err) {
-      Alert.alert("Delete failed", err.message);
+      console.error("Delete device error:", err);
+      Alert.alert("Delete failed", err.message || "Failed to delete device");
+      throw err;
     }
   };
 
@@ -242,24 +252,44 @@ const connectWebSocket = (token) => {
       switch (msg.type) {
         case "status_update":
           updateDeviceStatus(msg.device_id, msg.status);
+          // Update lastUpdated to trigger UI refresh
+          setLastUpdated(new Date());
           break;
 
         case "telemetry_update":
           setDevices((prev) =>
-            prev.map((d) =>
-              d.id === msg.device_id
-                ? { ...d, telemetry: msg.data, lastTelemetry: msg.timestamp }
-                : d
-            )
+            prev.map((d) => {
+              const dId = d.id || d._id;
+              const msgDeviceId = msg.device_id;
+              if (dId === msgDeviceId || String(dId) === String(msgDeviceId)) {
+                return { ...d, telemetry: msg.data, lastTelemetry: msg.timestamp };
+              }
+              return d;
+            })
           );
 
-          // ✅ Update widgets linked to this device
+          // ✅ Update widgets linked to this device - handle virtual pins for LEDs
           setWidgets((prev) =>
-            prev.map((w) =>
-              w.device_id === msg.device_id
-                ? { ...w, latest_telemetry: msg.data }
-                : w
-            )
+            prev.map((w) => {
+              const wDeviceId = w.device_id;
+              const msgDeviceId = msg.device_id;
+              if (wDeviceId === msgDeviceId || String(wDeviceId) === String(msgDeviceId)) {
+                // For LED widgets, check virtual pin
+                if (w.type === "led" && w.virtual_pin && msg.data) {
+                  const virtualPinKey = w.virtual_pin.toLowerCase();
+                  if (msg.data[virtualPinKey] !== undefined) {
+                    return {
+                      ...w,
+                      value: msg.data[virtualPinKey] ? 1 : 0,
+                      latest_telemetry: msg.data,
+                    };
+                  }
+                }
+                // For other widgets, update telemetry
+                return { ...w, latest_telemetry: msg.data };
+              }
+              return w;
+            })
           );
           break;
 
@@ -283,7 +313,27 @@ const connectWebSocket = (token) => {
           break;
 
         case "device_removed":
-          setDevices((prev) => prev.filter((d) => d.id !== msg.data.id));
+          // Handle device removal - support both id and _id formats
+          const removedDeviceId = msg.device_id || msg.data?.id;
+          if (removedDeviceId) {
+            setDevices((prev) => 
+              prev.filter((d) => {
+                const dId = d.id || d._id;
+                return dId !== removedDeviceId && String(dId) !== String(removedDeviceId);
+              })
+            );
+            setLastUpdated(new Date());
+          }
+          break;
+
+        case "notification":
+          // Handle notifications from WebSocket (also handled by SSE)
+          // This is a backup in case SSE is not available
+          if (msg.notification) {
+            // Notifications are primarily handled by SSE in NotificationsScreen
+            // This is just for logging/debugging
+            console.log("📬 Notification via WebSocket:", msg.notification);
+          }
           break;
 
         case "pong":
