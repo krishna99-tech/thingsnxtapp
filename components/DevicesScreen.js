@@ -54,21 +54,42 @@ export default function DevicesScreen({ navigation }) {
   );
 
   const handleAddDevice = async () => {
-    if (!deviceName || !deviceType) {
-      Alert.alert("Error", "Please enter both device name and type.");
+    // Validate input
+    if (!deviceName?.trim()) {
+      Alert.alert("Error", "Please enter a device name.");
+      return;
+    }
+
+    // Device type is optional in backend, but we can still validate
+    if (deviceType && deviceType.trim().length < 2) {
+      Alert.alert("Error", "Device type must be at least 2 characters.");
+      return;
+    }
+
+    // Prevent duplicate submissions
+    if (loading) {
       return;
     }
 
     setLoading(true);
     try {
-      await addDevice({ name: deviceName, type: deviceType });
+      // Backend only requires name, type is optional
+      const deviceData = { 
+        name: deviceName.trim(),
+        ...(deviceType?.trim() && { type: deviceType.trim() })
+      };
+      
+      await addDevice(deviceData);
       Alert.alert("✅ Success", "Device added successfully!");
       setAddDeviceModal(false);
       setDeviceName("");
       setDeviceType("");
+      // Refresh device list
+      fetchDevices();
     } catch (err) {
       console.error("Add Device Error:", err);
-      Alert.alert("Error", err.message || "Failed to add device");
+      const errorMessage = err.response?.data?.detail || err.message || "Failed to add device";
+      Alert.alert("Error", errorMessage);
     } finally {
       setLoading(false);
     }

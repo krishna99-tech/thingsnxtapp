@@ -154,13 +154,35 @@ export const AuthProvider = ({ children }) => {
 
   const addDevice = async (deviceData) => {
     try {
+      // Validate input
+      if (!deviceData?.name?.trim()) {
+        throw new Error("Device name is required");
+      }
+      
       const data = await API.addDevice(deviceData);
       if (data) {
-        setDevices((prev) => [...prev, data]);
-        Alert.alert("Device added successfully");
+        // Add device to state immediately for optimistic update
+        setDevices((prev) => {
+          // Check if device already exists (prevent duplicates)
+          const exists = prev.some((d) => 
+            (d.id || d._id) === (data.id || data._id) ||
+            d.device_token === data.device_token
+          );
+          if (exists) {
+            // Update existing device
+            return prev.map((d) => 
+              (d.id || d._id) === (data.id || data._id) ? data : d
+            );
+          }
+          return [...prev, data];
+        });
+        return data;
       }
+      throw new Error("Invalid response from server");
     } catch (err) {
-      Alert.alert("Add device failed", err.message);
+      console.error("Add device error:", err);
+      const errorMessage = err.response?.data?.detail || err.message || "Failed to add device";
+      throw new Error(errorMessage);
     }
   };
 

@@ -210,11 +210,15 @@ export default function DashboardScreen({ route, navigation }) {
                   // Only update if this specific virtual pin is in the data
                   if (msg.data && msg.data[virtualPinKey] !== undefined) {
                     const newValue = msg.data[virtualPinKey];
-                    console.log(`📊 Dashboard: Updating LED widget ${w._id} (${virtualPinKey}) to ${newValue ? "ON" : "OFF"}`);
-                    return {
-                      ...w,
-                      value: newValue ? 1 : 0,
-                    };
+                    const currentValue = w.value ? 1 : 0;
+                    // Only update if value actually changed to prevent flickering
+                    if (newValue !== currentValue) {
+                      console.log(`📊 Dashboard: Updating LED widget ${w._id} (${virtualPinKey}) to ${newValue ? "ON" : "OFF"}`);
+                      return {
+                        ...w,
+                        value: newValue ? 1 : 0,
+                      };
+                    }
                   }
                   // Don't update if virtual pin doesn't match
                   return w;
@@ -275,9 +279,15 @@ export default function DashboardScreen({ route, navigation }) {
       Alert.alert("Select a device", "Please choose a device for the LED widget.");
       return;
     }
+    
+    // Prevent duplicate submissions
+    if (creatingLed) {
+      return;
+    }
+    
     try {
       setCreatingLed(true);
-      await axios.post(
+      const response = await axios.post(
         `${API_BASE}/widgets`,
         {
           dashboard_id: dashboard._id,
@@ -286,20 +296,52 @@ export default function DashboardScreen({ route, navigation }) {
           label: ledLabel?.trim() || "LED Control",
           value: 0,
         },
-        { headers: { Authorization: `Bearer ${userToken}` } }
+        { 
+          headers: { Authorization: `Bearer ${userToken}` },
+          timeout: 10000, // 10 second timeout
+        }
       );
+      
+      // Add widget to state immediately for optimistic update
+      if (response.data) {
+        const newWidget = {
+          ...response.data,
+          _id: response.data._id || response.data.id,
+          device_token: devices.find((d) => d._id === selectedDeviceId)?.device_token || null,
+          virtual_pin: response.data.config?.virtual_pin,
+        };
+        setWidgets((prev) => {
+          // Check if widget already exists
+          const exists = prev.some((w) => w._id === newWidget._id);
+          if (exists) {
+            return prev.map((w) => w._id === newWidget._id ? newWidget : w);
+          }
+          return [...prev, newWidget];
+        });
+      }
+      
       setAddLedModalVisible(false);
       setLedLabel("");
       setSelectedDeviceId(null);
-      fetchWidgets();
-      Alert.alert("Widget added", "LED widget created successfully.");
+      
+      // Optionally refetch to ensure consistency
+      setTimeout(() => {
+        fetchWidgets();
+      }, 500);
+      
+      Alert.alert("✅ Success", "LED widget created successfully.");
     } catch (err) {
       console.error("❌ Create LED widget error:", err);
-      if (err.response?.status === 401) logout();
-      Alert.alert(
-        "Error",
-        err.response?.data?.detail || "Failed to create LED widget."
-      );
+      
+      if (err.response?.status === 401) {
+        logout();
+        Alert.alert("Session Expired", "Please login again.");
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        Alert.alert("Timeout", "Request took too long. Please check your connection.");
+      } else {
+        const errorMessage = err.response?.data?.detail || err.message || "Failed to create LED widget";
+        Alert.alert("Error", errorMessage);
+      }
     } finally {
       setCreatingLed(false);
     }

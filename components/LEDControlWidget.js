@@ -34,7 +34,9 @@ export default function LEDControlWidget({
   onDelete,          // ✅ Delete handler
   onStateChange,
 }) {
-  const [ledOn, setLedOn] = useState(initialState ? 1 : 0);
+  // ✅ Use ref to track if we're updating from WebSocket to prevent flickering
+  const isUpdatingFromWS = useRef(false);
+  const [ledOn, setLedOn] = useState(() => initialState ? 1 : 0);
   const [loading, setLoading] = useState(false);
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [timerModalVisible, setTimerModalVisible] = useState(false);
@@ -120,7 +122,10 @@ export default function LEDControlWidget({
   useEffect(() => {
     if (prevWidgetIdRef.current !== widgetId) {
       // Widget changed, update state from initial state
-      setLedOn(initialState ? 1 : 0);
+      // Only update if not currently updating from WebSocket
+      if (!isUpdatingFromWS.current) {
+        setLedOn(initialState ? 1 : 0);
+      }
       prevWidgetIdRef.current = widgetId;
     }
   }, [widgetId, initialState]);
@@ -170,7 +175,12 @@ export default function LEDControlWidget({
         ) {
           const newValue = msg.widget?.value;
           if (newValue !== undefined && newValue !== null) {
+            isUpdatingFromWS.current = true;
             setLedOn(newValue ? 1 : 0);
+            // Reset flag after state update
+            setTimeout(() => {
+              isUpdatingFromWS.current = false;
+            }, 100);
           }
           fetchSchedules();
         } 
@@ -195,8 +205,17 @@ export default function LEDControlWidget({
             // Only update if this is for our virtual pin - strict matching
             if (msg.data && msg.data[targetVirtualPin] !== undefined) {
               const newValue = msg.data[targetVirtualPin];
-              setLedOn(newValue ? 1 : 0);
-              console.log(`💡 LED ${targetVirtualPin} (widget ${targetWidgetId}) updated via WS:`, newValue ? "ON" : "OFF");
+              const currentValue = ledOn;
+              // Only update if value actually changed to prevent flickering
+              if (newValue !== currentValue) {
+                isUpdatingFromWS.current = true;
+                setLedOn(newValue ? 1 : 0);
+                console.log(`💡 LED ${targetVirtualPin} (widget ${targetWidgetId}) updated via WS:`, newValue ? "ON" : "OFF");
+                // Reset flag after state update
+                setTimeout(() => {
+                  isUpdatingFromWS.current = false;
+                }, 100);
+              }
             }
           }
         }
@@ -216,30 +235,55 @@ export default function LEDControlWidget({
       Alert.alert("Missing data", "Widget ID or user token is not available.");
       return;
     }
+    
+    // Prevent multiple rapid clicks
+    if (loading) {
+      console.log("⚠️ LED toggle already in progress");
+      return;
+    }
+    
     setLoading(true);
     const currentState = ledOn;
     const newState = currentState ? 0 : 1;
-    // Optimistically update UI immediately
-    setLedOn(newState);
+    
+    // Optimistically update UI immediately (only if not updating from WS)
+    if (!isUpdatingFromWS.current) {
+      setLedOn(newState);
+    }
+    
     try {
       const res = await axios.post(
         `${API_BASE}/widgets/${widgetId}/state`,
         { state: newState },
-        { headers: { Authorization: `Bearer ${userToken}` } }
+        { 
+          headers: { Authorization: `Bearer ${userToken}` },
+          timeout: 10000, // 10 second timeout
+        }
       );
+      
       // State will be confirmed via WebSocket update, no need to refetch
       if (res.status !== 200) {
         // Revert on error
-        setLedOn(currentState);
+        if (!isUpdatingFromWS.current) {
+          setLedOn(currentState);
+        }
       }
-      // Don't call onStateChange - it was causing forced refetch
-      // Don't call fetchSchedules here - it will be updated via WebSocket
     } catch (err) {
       console.error("LED toggle error:", err.response?.data || err.message);
-      // Revert on error - restore previous state
-      setLedOn(currentState);
-      if (err.response?.status === 401) logout?.();
-      Alert.alert("Error", "Failed to change LED state.");
+      
+      // Revert on error - restore previous state (only if not updating from WS)
+      if (!isUpdatingFromWS.current) {
+        setLedOn(currentState);
+      }
+      
+      if (err.response?.status === 401) {
+        logout?.();
+        Alert.alert("Session Expired", "Please login again.");
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        Alert.alert("Timeout", "Request took too long. Please check your connection.");
+      } else {
+        Alert.alert("Error", err.response?.data?.detail || "Failed to change LED state.");
+      }
     } finally {
       setLoading(false);
     }

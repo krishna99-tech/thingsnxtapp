@@ -158,9 +158,18 @@ class API {
   }
 
   async addDevice(deviceData) {
+    // Validate required fields
+    if (!deviceData?.name?.trim()) {
+      throw new Error("Device name is required");
+    }
+    
     return this.request("/devices", {
       method: "POST",
-      body: JSON.stringify(deviceData),
+      body: JSON.stringify({
+        name: deviceData.name.trim(),
+        // Type is optional, only include if provided
+        ...(deviceData.type && { type: deviceData.type.trim() }),
+      }),
     });
   }
 

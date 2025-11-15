@@ -145,7 +145,11 @@ export default function DeviceDetailScreen({ route, navigation }) {
   };
 
   const exportToDashboard = async (dashboardId) => {
-    if (!userToken || !selectedTelemetry || !selectedWidgetType) return;
+    if (!userToken || !selectedTelemetry || !selectedWidgetType) {
+      Alert.alert("Error", "Missing required information.");
+      return;
+    }
+    
     try {
       const { key, value } = selectedTelemetry;
 
@@ -166,7 +170,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
       await axios.post(
         `${API_BASE}/widgets`,
         payload,
-        { headers: { Authorization: `Bearer ${userToken}` } }
+        { 
+          headers: { Authorization: `Bearer ${userToken}` },
+          timeout: 10000, // 10 second timeout
+        }
       );
 
       setDashboardModalVisible(false);
@@ -174,8 +181,16 @@ export default function DeviceDetailScreen({ route, navigation }) {
       setSelectedWidgetType(null);
       Alert.alert("✅ Success", `Widget '${key}' added to dashboard`);
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to export telemetry");
+      console.error("Export to dashboard error:", err);
+      
+      if (err.response?.status === 401) {
+        Alert.alert("Session Expired", "Please login again.");
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        Alert.alert("Timeout", "Request took too long. Please check your connection.");
+      } else {
+        const errorMessage = err.response?.data?.detail || err.message || "Failed to export telemetry";
+        Alert.alert("Error", errorMessage);
+      }
     }
   };
 

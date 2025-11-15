@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 
 // 🖥️ Your local backend
-const LOCAL_IP = "192.168.1.179";
+const LOCAL_IP = "192.168.29.139";
 const LOCAL_PORT = 8000;
 
 // 🧩 Base URLs (for development)
