@@ -1,4 +1,4 @@
-const LOCAL_IP = "192.168.1.179";
+const LOCAL_IP = "192.168.29.139";
 const LOCAL_PORT = "8000";
 
 const DEV_BASE_URL = `http://${LOCAL_IP}:${LOCAL_PORT}`;

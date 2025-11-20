@@ -165,12 +165,12 @@ export default function DashboardScreen({ route, navigation }) {
       try {
         const msg = JSON.parse(event.data);
 
-        if (msg.type === "widget_update" && msg.dashboard_id === dashboard._id) {
+        if (msg.type === "widget_update" && String(msg.dashboard_id) === String(dashboard._id)) {
           setWidgets((prev) => {
-            const found = prev.some((w) => w._id === msg.widget._id);
+            const found = prev.some((w) => String(w._id) === String(msg.widget._id));
             if (found) {
               return prev.map((w) => {
-                if (w._id === msg.widget._id) {
+                if (String(w._id) === String(msg.widget._id)) {
                   // For LED widgets, ensure value is properly set
                   const updated = { ...w, ...msg.widget };
                   if (updated.type === "led" && updated.value !== undefined) {
@@ -190,20 +190,20 @@ export default function DashboardScreen({ route, navigation }) {
         } else if (
           (msg.type === "led_schedule_executed" ||
             msg.type === "led_schedule_cancelled") &&
-          msg.dashboard_id === dashboard._id
+          String(msg.dashboard_id) === String(dashboard._id)
         ) {
           // Update schedules via WebSocket, no need to refetch
           // The LED widget will handle schedule updates internally
-        } else if (msg.type === "widget_deleted" && msg.dashboard_id === dashboard._id) {
+        } else if (msg.type === "widget_deleted" && String(msg.dashboard_id) === String(dashboard._id)) {
           // Remove deleted widget from state immediately
-          setWidgets((prev) => prev.filter((w) => w._id !== msg.widget_id));
+          setWidgets((prev) => prev.filter((w) => String(w._id) !== String(msg.widget_id)));
         } else if (msg.type === "telemetry_update" && msg.device_id) {
           setWidgets((prev) =>
             prev.map((w) => {
               const wDeviceId = w.device_id;
               const msgDeviceId = msg.device_id;
-              // Match device IDs (handle both string and ObjectId formats)
-              if (wDeviceId === msgDeviceId || String(wDeviceId) === String(msgDeviceId)) {
+              // Match device IDs using robust String check
+              if (String(wDeviceId) === String(msgDeviceId)) {
                 // Handle LED widgets with virtual pins - strict virtual pin matching
                 if (w.type === "led" && w.virtual_pin) {
                   const virtualPinKey = w.virtual_pin.toLowerCase();
@@ -312,9 +312,9 @@ export default function DashboardScreen({ route, navigation }) {
         };
         setWidgets((prev) => {
           // Check if widget already exists
-          const exists = prev.some((w) => w._id === newWidget._id);
+          const exists = prev.some((w) => String(w._id) === String(newWidget._id));
           if (exists) {
-            return prev.map((w) => w._id === newWidget._id ? newWidget : w);
+            return prev.map((w) => String(w._id) === String(newWidget._id) ? newWidget : w);
           }
           return [...prev, newWidget];
         });
@@ -374,7 +374,7 @@ export default function DashboardScreen({ route, navigation }) {
             await axios.delete(`${API_BASE}/widgets/${widgetId}`, {
               headers: { Authorization: `Bearer ${userToken}` },
             });
-            setWidgets((prev) => prev.filter((w) => w._id !== widgetId));
+            setWidgets((prev) => prev.filter((w) => String(w._id) !== String(widgetId)));
             Alert.alert("Deleted", "Widget deleted successfully");
           } catch (err) {
             console.error("❌ Delete widget error:", err);

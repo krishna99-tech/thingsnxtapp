@@ -1,7 +1,6 @@
 import React, {
   createContext,
   useContext,
-  useEffect,
   useState,
   useRef,
 } from "react";
@@ -9,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert } from "react-native";
 import { BASE_URL, WS_URL } from "../screens/config";
 import API from "../services/api";
+import { useEffect } from "react";
 
 export const AuthContext = createContext(null);
 
@@ -33,6 +33,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const wsRef = useRef(null);
+  const sseAbortController = useRef(null); // For aborting SSE fetch
+  const isReconnecting = useRef(true); // Flag to control WS reconnection
 
   // ====================================
   // 🏁 INIT: restore session
@@ -47,7 +49,8 @@ export const AuthProvider = ({ children }) => {
           setUsername(storedUser);
           await fetchDevices(token);
 
-          connectWebSocket(token);
+          connectWebSocket(token); // USE WEBSOCKET FOR REAL-TIME
+          // connectSSE(token); // Or use SSE if that's what your backend requires
         }
       } catch (err) {
         console.error("Init error:", err);
@@ -81,7 +84,9 @@ export const AuthProvider = ({ children }) => {
 
         await fetchDevices(data.access_token);
 
+        // USE WEBSOCKET FOR REAL-TIME
         connectWebSocket(data.access_token);
+        // connectSSE(data.access_token); // Or use SSE if that's what your backend requires
 
         Alert.alert("Login Success", `Welcome ${data.user?.username || ""}!`);
         navigation?.reset({ index: 0, routes: [{ name: "MainTabs" }] });
@@ -106,7 +111,7 @@ export const AuthProvider = ({ children }) => {
         setUserToken(data.access_token);
         setUsername(data.user?.username);
         await fetchDevices(data.access_token);
-        connectWebSocket(data.access_token);
+        connectWebSocket(data.access_token); // Use WebSocket for consistency
         Alert.alert("Signup Success", "Welcome!");
       } else {
         throw new Error("Signup failed");
@@ -122,7 +127,13 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await API.logout();
+      isReconnecting.current = false; // Prevent WS from reconnecting on logout
       wsRef.current?.close();
+      // Abort any ongoing SSE connection
+      if (sseAbortController.current) {
+        sseAbortController.current.abort();
+        sseAbortController.current = null;
+      }
     } catch (err) {
       console.error("Logout API error:", err);
     } finally {
@@ -135,7 +146,7 @@ export const AuthProvider = ({ children }) => {
       setUsername(null);
       setDevices([]);
       setWidgets([]);
-    }
+    };
   };
 
   // ====================================
@@ -145,11 +156,21 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await API.getDevices();
       if (Array.isArray(data)) {
-        setDevices(data);
+        // Before replacing state entirely, merge with existing:
+        setDevices((prevDevices) =>
+          data.map((serverDev) => {
+            const local = prevDevices.find(
+              (d) => String(d.id ?? d._id) === String(serverDev.id ?? serverDev._id)
+            );
+            return local && local.telemetry
+              ? { ...serverDev, telemetry: local.telemetry, lastTelemetry: local.lastTelemetry }
+              : serverDev;
+          })
+        );
       }
     } catch (err) {
       console.error("Fetch devices failed:", err);
-    }
+    };
   };
 
   const addDevice = async (deviceData) => {
@@ -157,7 +178,7 @@ export const AuthProvider = ({ children }) => {
       // Validate input
       if (!deviceData?.name?.trim()) {
         throw new Error("Device name is required");
-      }
+      };
       
       const data = await API.addDevice(deviceData);
       if (data) {
@@ -183,7 +204,7 @@ export const AuthProvider = ({ children }) => {
       console.error("Add device error:", err);
       const errorMessage = err.response?.data?.detail || err.message || "Failed to add device";
       throw new Error(errorMessage);
-    }
+    };
   };
 
   const deleteDevice = async (deviceId) => {
@@ -203,9 +224,8 @@ export const AuthProvider = ({ children }) => {
       console.error("Delete device error:", err);
       Alert.alert("Delete failed", err.message || "Failed to delete device");
       throw err;
-    }
+    };
   };
-
 
   // ====================================
   // 🌐 TELEMETRY
@@ -213,10 +233,136 @@ export const AuthProvider = ({ children }) => {
   const fetchTelemetry = async (device_token) => {
     try {
       const json = await API.getTelemetry(device_token);
+      // Also update in context
+      if (json?.device_id) {
+        setDevices((prev) =>
+          prev.map((d) =>
+            String(d.id ?? d._id) === String(json.device_id)
+              ? { ...d, telemetry: json.data, lastTelemetry: json.timestamp }
+              : d
+          )
+        );
+      }
       return json?.data || {};
     } catch (err) {
       console.error("Fetch telemetry error:", err);
       return {};
+    };
+  };
+
+  // ====================================
+  // ⚡ SERVER-SENT EVENTS (SSE)
+  // ====================================
+  const connectSSE = async (token) => { // Make connectSSE an async function
+    if (!token) return;
+
+    // Prevent duplicate connections
+    if (sseAbortController.current) {
+      console.log("SSE connection already active. Aborting old one.");
+      sseAbortController.current.abort();
+    }
+
+    const controller = new AbortController();
+    sseAbortController.current = controller;
+
+    // ✅ Define the message handler inside the connection function
+    // This ensures it has access to the latest state setters.
+    const handleSSEMessage = (msg) => {
+      handleRealtimeMessage(msg);
+    };
+
+    // Move the logic directly into connectSSE
+    try {
+      console.log("🔄 Connecting to SSE stream...");
+      const response = await fetch(`${BASE_URL}/events/stream`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal, // Pass the abort signal to fetch
+      });
+
+      if (!response.ok) {
+        throw new Error(`SSE connection failed: ${response.status}`);
+      }
+
+      console.log("✅ SSE stream connected");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      // Process the stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log("SSE stream finished.");
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            try {
+              const dataStr = line.substring(5).trim();
+              if (dataStr) {
+                const msg = JSON.parse(dataStr);
+                handleSSEMessage(msg);
+              }
+            } catch (parseErr) {
+              console.error("❌ Error parsing SSE data:", parseErr, "Raw data:", line);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log("SSE connection aborted successfully.");
+        return; // This is an expected error on logout, so we exit gracefully.
+      }
+      console.error("❌ SSE connection error:", err);
+      // Clean up before retrying
+      if (sseAbortController.current === controller) {
+        sseAbortController.current = null;
+      }
+      // Reconnect after a delay if not aborted
+      setTimeout(() => connectSSE(token), 5000);
+    }
+  };
+
+  // ====================================
+  // ⚡ REAL-TIME MESSAGE HANDLER (for WS & SSE)
+  // ====================================
+  const handleRealtimeMessage = (msg) => {
+    if (!msg || typeof msg !== "object") return;
+    // Determine if backend is sending {type, payload: {device_id, data, ...}} or {type, device_id, data, timestamp}
+    let m = msg;
+    if (msg.payload && typeof msg.payload === "object") {
+      m = { ...msg.payload, type: msg.type };
+    }
+
+    if (m.type === "telemetry_update" && m.device_id && m.data) {
+      setDevices((prevDevices) =>
+        prevDevices.map((d) =>
+          String(d.id ?? d._id) === String(m.device_id)
+            ? { ...d, telemetry: { ...(d.telemetry || {}), ...m.data }, lastTelemetry: m.timestamp || new Date().toISOString() }
+            : d
+        )
+      );
+      setLastUpdated(new Date().toISOString());
+      console.log("[CTX] Telemetry updated for device", m.device_id, m.data);
+    } else if ((m.type === "device_status" || m.type === "status_update") && m.device_id) {
+      setDevices((prevDevices) =>
+        prevDevices.map((d) =>
+          String(d.id ?? d._id) === String(m.device_id)
+            ? { ...d, status: m.status, last_active: m.timestamp }
+            : d
+        )
+      );
+    } else if (m.type !== "pong" && m.type !== "ping") {
+      // Log other message types for debugging, ignoring pings/pongs
+      console.log("[CTX] Received unhandled message type:", m.type, m);
     }
   };
 
@@ -228,6 +374,7 @@ export const AuthProvider = ({ children }) => {
 // ====================================
 const connectWebSocket = (token) => {
   if (!token) return;
+  isReconnecting.current = true; // Allow reconnection for this session
 
   // Avoid duplicate connections
   if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -238,16 +385,7 @@ const connectWebSocket = (token) => {
   const ws = new WebSocket(`${WS_URL}?token=${token}`);
   wsRef.current = ws;
 
-  let pingInterval;
-
-  // ✅ Local helper function — must come BEFORE usage
-  const updateDeviceStatus = (deviceId, newStatus) => {
-    setDevices((prev) =>
-      prev.map((d) =>
-        d.id === deviceId ? { ...d, status: newStatus } : d
-      )
-    );
-  };
+  let pingInterval; // Moved here to be accessible in all ws event handlers
 
   // ✅ Connection opened
   ws.onopen = () => {
@@ -267,109 +405,9 @@ const connectWebSocket = (token) => {
       if (!event.data) return; // Skip empty messages
 
       const msg = JSON.parse(event.data);
-      if (!msg || typeof msg !== "object") return;
-
-      console.log("📩 WS message:", msg);
-
-      switch (msg.type) {
-        case "status_update":
-          updateDeviceStatus(msg.device_id, msg.status);
-          // Update lastUpdated to trigger UI refresh
-          setLastUpdated(new Date());
-          break;
-
-        case "telemetry_update":
-          setDevices((prev) =>
-            prev.map((d) => {
-              const dId = d.id || d._id;
-              const msgDeviceId = msg.device_id;
-              if (dId === msgDeviceId || String(dId) === String(msgDeviceId)) {
-                return { ...d, telemetry: msg.data, lastTelemetry: msg.timestamp };
-              }
-              return d;
-            })
-          );
-
-          // ✅ Update widgets linked to this device - handle virtual pins for LEDs
-          setWidgets((prev) =>
-            prev.map((w) => {
-              const wDeviceId = w.device_id;
-              const msgDeviceId = msg.device_id;
-              if (wDeviceId === msgDeviceId || String(wDeviceId) === String(msgDeviceId)) {
-                // For LED widgets, check virtual pin
-                if (w.type === "led" && w.virtual_pin && msg.data) {
-                  const virtualPinKey = w.virtual_pin.toLowerCase();
-                  if (msg.data[virtualPinKey] !== undefined) {
-                    return {
-                      ...w,
-                      value: msg.data[virtualPinKey] ? 1 : 0,
-                      latest_telemetry: msg.data,
-                    };
-                  }
-                }
-                // For other widgets, update telemetry
-                return { ...w, latest_telemetry: msg.data };
-              }
-              return w;
-            })
-          );
-          break;
-
-        case "widget_update":
-          setWidgets((prev) => {
-            const exists = prev.some((w) => w._id === msg.widget._id);
-            return exists
-              ? prev.map((w) =>
-                  w._id === msg.widget._id ? { ...w, ...msg.widget } : w
-                )
-              : [...prev, msg.widget];
-          });
-          break;
-
-        case "device_added":
-          setDevices((prev) =>
-            prev.some((d) => d.id === msg.data.id)
-              ? prev
-              : [...prev, msg.data]
-          );
-          break;
-
-        case "device_removed":
-          // Handle device removal - support both id and _id formats
-          const removedDeviceId = msg.device_id || msg.data?.id;
-          if (removedDeviceId) {
-            setDevices((prev) => 
-              prev.filter((d) => {
-                const dId = d.id || d._id;
-                return dId !== removedDeviceId && String(dId) !== String(removedDeviceId);
-              })
-            );
-            setLastUpdated(new Date());
-          }
-          break;
-
-        case "notification":
-          // Handle notifications from WebSocket (also handled by SSE)
-          // This is a backup in case SSE is not available
-          if (msg.notification) {
-            // Notifications are primarily handled by SSE in NotificationsScreen
-            // This is just for logging/debugging
-            console.log("📬 Notification via WebSocket:", msg.notification);
-          }
-          break;
-
-        case "pong":
-          // Ignore ping-pong keepalives
-          break;
-
-        default:
-          console.warn("⚠️ Unknown WS message type:", msg.type);
-      }
-
-      // ✅ Timestamp refresh for UI
-      setLastUpdated(new Date());
+      handleRealtimeMessage(msg);
     } catch (err) {
-      console.error("❌ WebSocket parse error in DeviceDetailScreen:", err);
+      console.error("❌ WebSocket parse error:", err);
       console.log("Raw event data:", event.data);
     }
   };
@@ -379,11 +417,13 @@ const connectWebSocket = (token) => {
     console.warn("⚠️ WS closed:", e.code, e.reason);
     clearInterval(pingInterval);
 
-    // Attempt reconnection
-    setTimeout(() => {
-      console.log("🔄 Reconnecting WebSocket...");
-      connectWebSocket(token);
-    }, 5000);
+    // Attempt reconnection only if not intentionally disconnected (e.g., logout)
+    if (isReconnecting.current) {
+      setTimeout(() => {
+        console.log("🔄 Reconnecting WebSocket...");
+        connectWebSocket(token);
+      }, 5000);
+    }
   };
 
   // ✅ Handle errors
@@ -397,6 +437,12 @@ const connectWebSocket = (token) => {
   // ====================================
   // 🌍 CONTEXT PROVIDER VALUE
   // ====================================
+  useEffect(() => {
+    if (devices) {
+      console.log("[CTX] Devices after update:", devices.map(d => ({ id: d.id || d._id, telemetry: d.telemetry })));
+    }
+  }, [devices]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -408,8 +454,10 @@ const connectWebSocket = (token) => {
         addDevice,
         deleteDevice,
         fetchDevices,
+        handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
         fetchTelemetry,
         connectWebSocket,
+        connectSSE,
         login,
         signup,
         logout,
@@ -424,3 +472,5 @@ const connectWebSocket = (token) => {
     </AuthContext.Provider>
   );
 };
+  
+                

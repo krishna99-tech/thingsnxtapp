@@ -155,7 +155,7 @@ export default function HomeScreen() {
                 }}
               >
                 Last updated:{" "}
-                {lastUpdated
+                {lastUpdated && new Date(lastUpdated).toLocaleTimeString
                   ? new Date(lastUpdated).toLocaleTimeString()
                   : "Waiting..."}
               </Text>

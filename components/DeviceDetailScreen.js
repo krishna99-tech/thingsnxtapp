@@ -21,7 +21,11 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const { device } = route.params;
   const { devices, fetchTelemetry, deleteDevice, userToken, wsRef } = useContext(AuthContext);
 
-  const [telemetry, setTelemetry] = useState(device.telemetry || null);
+  // Always get the real (live) device from context
+  const liveDevice = devices.find(
+    (d) => String(d.id ?? d._id) === String(device.id ?? device._id)
+  ) || device;
+
   const [loading, setLoading] = useState(false);
   const [dashboards, setDashboards] = useState([]);
   const [selectedTelemetry, setSelectedTelemetry] = useState(null);
@@ -29,11 +33,18 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [dashboardModalVisible, setDashboardModalVisible] = useState(false);
   const [selectedWidgetType, setSelectedWidgetType] = useState(null);
 
+  // Directly use telemetry from liveDevice
+  const telemetry = liveDevice.telemetry || {};
+
   // Update telemetry when devices change
   useEffect(() => {
-    const currentDevice = devices.find((d) => d._id === device._id);
-    if (currentDevice?.telemetry) setTelemetry(currentDevice.telemetry);
-  }, [devices, device._id]);
+    const currentDevice = devices.find(
+      (d) => String(d.id || d._id) === String(device.id || device._id)
+    );
+    if (currentDevice?.telemetry) {
+      // setTelemetry(currentDevice.telemetry); // This line is removed
+    }
+  }, [devices, device.id, device._id]);
 
   // Listen for live telemetry updates via WebSocket
   useEffect(() => {
@@ -42,8 +53,11 @@ export default function DeviceDetailScreen({ route, navigation }) {
     const handleWSMessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === "telemetry_update" && msg.device_id === device._id) {
-          setTelemetry(msg.data);
+        if (
+          msg.type === "telemetry_update" &&
+          String(msg.device_id) === String(device.id || device._id)
+        ) {
+          // setTelemetry(msg.data); // This line is removed
           console.log("📡 Live telemetry updated:", msg.data);
         }
       } catch (err) {
@@ -58,18 +72,13 @@ export default function DeviceDetailScreen({ route, navigation }) {
         wsRef.current.removeEventListener("message", handleWSMessage);
       }
     };
-  }, [device._id, wsRef]);
+  }, [device.id, device._id, wsRef]);
 
   const handleFetchTelemetry = async () => {
     try {
       setLoading(true);
-      const data = await fetchTelemetry(device.device_token);
-      if (data) {
-        setTelemetry(data);
-        console.log("📡 Telemetry fetched:", data);
-      } else {
-        Alert.alert("No Data", "No telemetry found for this device.");
-      }
+      await fetchTelemetry(liveDevice.device_token);
+      // Telemetry will update via the context once REST call completes
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to fetch telemetry");
@@ -197,12 +206,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
   return (
     <LinearGradient colors={["#1f4037", "#99f2c8"]} style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>{device.name}</Text>
-        <Text style={styles.label}>Status: {device.status}</Text>
+        <Text style={styles.title}>{liveDevice.name}</Text>
+        <Text style={styles.label}>Status: {liveDevice.status}</Text>
 
         <Text style={styles.label}>Access Token:</Text>
         <Text selectable style={styles.tokenBox}>
-          {device.device_token}
+          {liveDevice.device_token}
         </Text>
 
         <TouchableOpacity style={styles.button} onPress={handleFetchTelemetry}>

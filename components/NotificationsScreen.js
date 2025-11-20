@@ -14,6 +14,10 @@ import {
   Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  GestureHandlerRootView,
+  Swipeable,
+} from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../context/AuthContext";
 import axios from "axios";
@@ -216,6 +220,28 @@ export default function NotificationsScreen() {
     }
   };
 
+  const deleteNotification = async (notificationId) => {
+    if (!userToken) return;
+
+    try {
+      await axios.delete(`${API_BASE}/notifications/${notificationId}`, {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setNotifications((prev) =>
+        prev.filter((notif) => notif.id !== notificationId)
+      );
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+      Alert.alert(
+        "Error",
+        "Could not delete the notification. Please try again."
+      );
+      if (err.response?.status === 401) logout();
+    }
+  };
+
   const renderIcon = (type) => {
     switch (type) {
       case "warning":
@@ -242,74 +268,94 @@ export default function NotificationsScreen() {
     const { name, color } = renderIcon(item.type);
     const isExpanded = expanded === item.id;
 
-    return (
-      <TouchableOpacity 
-        activeOpacity={0.8} 
-        onPress={() => {
-          toggleExpand(item.id);
-          if (!item.read) markAsRead(item.id);
-        }}
-      >
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor:
-                theme === "dark" ? "rgba(255,255,255,0.05)" : "#ffffffcc",
-              borderColor: theme === "dark" ? "#333" : "#ccc",
-              opacity: item.read ? 0.7 : 1,
-            },
-          ]}
-        >
-          <View style={styles.headerRow}>
-            <Ionicons name={name} size={30} color={color} style={styles.icon} />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.title,
-                  { color: theme === "dark" ? "#fff" : "#000" },
-                ]}
-              >
-                {item.title}
-              </Text>
-              <Text
-                style={[
-                  styles.message,
-                  { color: theme === "dark" ? "#ccc" : "#333" },
-                ]}
-              >
-                {item.message}
-              </Text>
-            </View>
-            <Ionicons
-              name={isExpanded ? "chevron-up" : "chevron-down"}
-              size={22}
-              color={theme === "dark" ? "#aaa" : "#333"}
-            />
-          </View>
+    const renderRightActions = (progress, dragX) => {
+      const trans = dragX.interpolate({
+        inputRange: [-80, 0],
+        outputRange: [0, 80],
+        extrapolate: "clamp",
+      });
+      return (
+        <TouchableOpacity onPress={() => deleteNotification(item.id)}>
+          <Animated.View
+            style={[styles.deleteBox, { transform: [{ translateX: trans }] }]}
+          >
+            <Ionicons name="trash-outline" size={24} color="#fff" />
+            <Text style={styles.deleteText}>Delete</Text>
+          </Animated.View>
+        </TouchableOpacity>
+      );
+    };
 
-          {isExpanded && (
-            <View style={styles.detailsContainer}>
-              <Text
-                style={[
-                  styles.detailsText,
-                  { color: theme === "dark" ? "#aaa" : "#444" },
-                ]}
-              >
-                {item.details}
-              </Text>
-              <Text
-                style={[
-                  styles.timeText,
-                  { color: theme === "dark" ? "#777" : "#555" },
-                ]}
-              >
-                {item.time}
-              </Text>
+    return (
+      <Swipeable renderRightActions={renderRightActions}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            toggleExpand(item.id);
+            if (!item.read) markAsRead(item.id);
+          }}
+        >
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                backgroundColor:
+                  theme === "dark" ? "rgba(255,255,255,0.05)" : "#ffffffcc",
+                borderColor: theme === "dark" ? "#333" : "#ccc",
+                opacity: item.read ? 0.7 : 1,
+              },
+            ]}
+          >
+            <View style={styles.headerRow}>
+              <Ionicons name={name} size={30} color={color} style={styles.icon} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.title,
+                    { color: theme === "dark" ? "#fff" : "#000" },
+                  ]}
+                >
+                  {item.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.message,
+                    { color: theme === "dark" ? "#ccc" : "#333" },
+                  ]}
+                >
+                  {item.message}
+                </Text>
+              </View>
+              <Ionicons
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={22}
+                color={theme === "dark" ? "#aaa" : "#333"}
+              />
             </View>
-          )}
-        </Animated.View>
-      </TouchableOpacity>
+
+            {isExpanded && (
+              <View style={styles.detailsContainer}>
+                <Text
+                  style={[
+                    styles.detailsText,
+                    { color: theme === "dark" ? "#aaa" : "#444" },
+                  ]}
+                >
+                  {item.details}
+                </Text>
+                <Text
+                  style={[
+                    styles.timeText,
+                    { color: theme === "dark" ? "#777" : "#555" },
+                  ]}
+                >
+                  {item.time}
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
@@ -321,58 +367,59 @@ export default function NotificationsScreen() {
           : ["#e0eafc", "#cfdef3"]
       }
       style={styles.gradient}
-    >
+    ><GestureHandlerRootView style={{ flex: 1 }}>
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <Text
-          style={[styles.header, { color: theme === "dark" ? "#fff" : "#000" }]}
-        >
-           Notifications
-        </Text>
-
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color={theme === "dark" ? "#80b3ff" : "#007bff"}
-          />
-        ) : (
-          <FlatList
-            data={notifications}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={theme === "dark" ? "#fff" : "#000"}
-              />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text
-                  style={[
-                    styles.emptyText,
-                    { color: theme === "dark" ? "#aaa" : "#666" },
-                  ]}
-                >
-                  No new notifications.
-                </Text>
-              </View>
-            }
-            contentContainerStyle={{ paddingBottom: 80 }}
-          />
-        )}
-
-        {lastUpdated && (
           <Text
-            style={[
-              styles.timestamp,
-              { color: theme === "dark" ? "#aaa" : "#555" },
-            ]}
+            style={[styles.header, { color: theme === "dark" ? "#fff" : "#000" }]}
           >
-            Last updated: {lastUpdated.toLocaleTimeString()}
+            Notifications
           </Text>
-        )}
+
+          {loading ? (
+            <ActivityIndicator
+              size="large"
+              color={theme === "dark" ? "#80b3ff" : "#007bff"}
+            />
+          ) : (
+            <FlatList
+              data={notifications}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={theme === "dark" ? "#fff" : "#000"}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text
+                    style={[
+                      styles.emptyText,
+                      { color: theme === "dark" ? "#aaa" : "#666" },
+                    ]}
+                  >
+                    No new notifications.
+                  </Text>
+                </View>
+              }
+              contentContainerStyle={{ paddingBottom: 80 }}
+            />
+          )}
+
+          {lastUpdated && (
+            <Text
+              style={[
+                styles.timestamp,
+                { color: theme === "dark" ? "#aaa" : "#555" },
+              ]}
+            >
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </Text>
+          )}
       </Animated.View>
+      </GestureHandlerRootView>
     </LinearGradient>
   );
 }
@@ -444,5 +491,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     marginTop: 10,
+  },
+  deleteBox: {
+    backgroundColor: "#ff3b30",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 80,
+    height: "100%",
+    borderRadius: 12,
+    marginVertical: 6,
+  },
+  deleteText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
+    marginTop: 4,
   },
 });
