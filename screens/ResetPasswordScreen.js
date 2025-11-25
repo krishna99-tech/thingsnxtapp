@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
+import { Ionicons } from '@expo/vector-icons';
+
+const PasswordRequirement = ({ met, text }) => (
+    <View style={styles.requirementContainer}>
+      <Text style={met ? styles.requirementMet : styles.requirementNotMet}>
+        {met ? '✓' : '✗'}
+      </Text>
+      <Text style={styles.requirementText}>{text}</Text>
+    </View>
+  );
 
 export default function ResetPasswordScreen({ navigation, route }) {
   const [token, setToken] = useState(route?.params?.token || '');
@@ -20,8 +30,29 @@ export default function ResetPasswordScreen({ navigation, route }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordValidation, setPasswordValidation] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    specialChar: false,
+  });
 
-  const validatePassword = (pwd) => pwd.length >= 8;
+  const isPasswordValid = useMemo(
+    () => Object.values(passwordValidation).every(Boolean),
+    [passwordValidation]
+  );
+
+  const handlePasswordChange = (pwd) => {
+    setPassword(pwd);
+    setPasswordValidation({
+      length: pwd.length >= 8,
+      uppercase: /[A-Z]/.test(pwd),
+      lowercase: /[a-z]/.test(pwd),
+      number: /\d/.test(pwd),
+      specialChar: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+    });
+  };
 
   const handleResetPassword = async () => {
     if (!token.trim()) {
@@ -32,8 +63,11 @@ export default function ResetPasswordScreen({ navigation, route }) {
       Alert.alert('Error', 'Please enter your new password.');
       return;
     }
-    if (!validatePassword(password)) {
-      Alert.alert('Error', 'Password must be at least 8 characters long.');
+    if (!isPasswordValid) {
+      Alert.alert(
+        'Error',
+        'Password does not meet all the requirements.'
+      );
       return;
     }
     if (password !== confirmPassword) {
@@ -64,6 +98,8 @@ export default function ResetPasswordScreen({ navigation, route }) {
       setLoading(false);
     }
   };
+
+  const isButtonDisabled = loading || !isPasswordValid || password !== confirmPassword;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -114,7 +150,7 @@ export default function ResetPasswordScreen({ navigation, route }) {
                     style={styles.passwordInput}
                     placeholder="Create new password"
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={handlePasswordChange}
                     secureTextEntry={!showPassword}
                     editable={!loading}
                     placeholderTextColor="#999"
@@ -128,7 +164,28 @@ export default function ResetPasswordScreen({ navigation, route }) {
                     </Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.hint}>At least 8 characters</Text>
+                <View style={styles.requirementsGrid}>
+                  <PasswordRequirement
+                    met={passwordValidation.length}
+                    text="8+ characters"
+                  />
+                  <PasswordRequirement
+                    met={passwordValidation.uppercase}
+                    text="1 uppercase"
+                  />
+                  <PasswordRequirement
+                    met={passwordValidation.lowercase}
+                    text="1 lowercase"
+                  />
+                  <PasswordRequirement
+                    met={passwordValidation.number}
+                    text="1 number"
+                  />
+                  <PasswordRequirement
+                    met={passwordValidation.specialChar}
+                    text="1 special"
+                  />
+                </View>
               </View>
 
               <View style={styles.inputContainer}>
@@ -142,12 +199,18 @@ export default function ResetPasswordScreen({ navigation, route }) {
                   editable={!loading}
                   placeholderTextColor="#999"
                 />
+                 {password && confirmPassword && password !== confirmPassword && (
+                  <Text style={styles.errorText}>Passwords do not match.</Text>
+                )}
               </View>
 
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[
+                  styles.button,
+                  isButtonDisabled && styles.buttonDisabled,
+                ]}
                 onPress={handleResetPassword}
-                disabled={loading}
+                disabled={isButtonDisabled}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
@@ -292,6 +355,7 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: '#999',
     shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
     color: '#fff',
@@ -316,5 +380,34 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  requirementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  requirementContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+    marginBottom: 4,
+    width: '45%', // To fit two items per row
+  },
+  requirementMet: {
+    color: '#2e7d32',
+    marginRight: 6,
+  },
+  requirementNotMet: {
+    color: '#d32f2f',
+    marginRight: 6,
+  },
+  requirementText: {
+    fontSize: 12,
+    color: '#666',
+  },
+   errorText: {
+    color: '#d32f2f',
+    fontSize: 12,
+    marginTop: 4,
   },
 });

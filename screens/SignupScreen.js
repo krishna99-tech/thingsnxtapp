@@ -17,6 +17,20 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
 
+const ValidationItem = ({ isValid, text }) => (
+  <View style={styles.validationItem}>
+    <Ionicons
+      name={isValid ? "checkmark-circle" : "close-circle-outline"}
+      size={20}
+      color={isValid ? "#28a745" : "#dc3545"}
+      style={{ marginRight: 8 }}
+    />
+    <Text style={[styles.validationText, { color: isValid ? "#2c6e49" : "#c94c4c" }]}>
+      {text}
+    </Text>
+  </View>
+);
+
 export default function SignupScreen({ navigation }) {
   const [formData, setFormData] = useState({
     email: "",
@@ -27,7 +41,15 @@ export default function SignupScreen({ navigation }) {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null);
+  const [passwordValidation, setPasswordValidation] = useState({
+    minLength: false,
+    hasUppercase: false,
+    hasLowercase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+  });
+
+  const [errors, setErrors] = useState({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -39,40 +61,70 @@ export default function SignupScreen({ navigation }) {
   }, []);
 
   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validateUsername = (username) => /^[a-zA-Z0-9_]+$/.test(username);
+  const validateUsername = (username) => /^[a-zA-Z0-9_-]+$/.test(username);
 
-  const updateFormData = (key, value) =>
+  const updateFormData = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
+    if (errors[key]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[key];
+        return newErrors;
+      });
+    }
+  };
 
-  // ✨ Signup with NO auto-login!
+  const handlePasswordChange = (password) => {
+    updateFormData("password", password);
+
+    const validations = {
+      minLength: password.length >= 8,
+      hasUppercase: /[A-Z]/.test(password),
+      hasLowercase: /[a-z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSpecialChar: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    };
+    setPasswordValidation(validations);
+  };
+
+  const validate = () => {
+    const { email, username, password, confirmPassword } = formData;
+    const newErrors = {};
+
+    if (!email.trim()) {
+      newErrors.email = "Email is required.";
+    } else if (!validateEmail(email)) {
+      newErrors.email = "Please enter a valid email address.";
+    }
+
+    if (!username.trim()) {
+      newErrors.username = "Username is required.";
+    } else if (!validateUsername(username)) {
+      newErrors.username =
+        "Username can only contain letters, numbers, underscores, and hyphens.";
+    }
+
+    if (!password) {
+      newErrors.password = "Password is required.";
+    } else if (password.length < 8) {
+      newErrors.password = "Password must be at least 8 characters.";
+    }
+
+    if (!confirmPassword) {
+      newErrors.confirmPassword = "Please confirm your password.";
+    } else if (password !== confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSignup = async () => {
-    const { email, username, password, confirmPassword, full_name } = formData;
-
-    if (!email || !username || !password || !confirmPassword) {
-      Alert.alert("Missing Fields", "Please fill in all required fields.");
-      return;
-    }
-    if (!validateEmail(email)) {
-      Alert.alert("Invalid Email", "Please enter a valid email address.");
-      return;
-    }
-    if (!validateUsername(username)) {
-      Alert.alert(
-        "Invalid Username",
-        "Username can only contain letters, numbers, and underscores."
-      );
-      return;
-    }
-    if (password.length < 8) {
-      Alert.alert("Weak Password", "Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert("Password Mismatch", "Passwords do not match.");
-      return;
-    }
+    if (!validate()) return;
 
     setLoading(true);
+    const { email, username, password, full_name } = formData;
     try {
       const payload = {
         email: email.toLowerCase().trim(),
@@ -82,7 +134,6 @@ export default function SignupScreen({ navigation }) {
       };
       const res = await api.signup(payload);
 
-      // 🚫 DO NOT auto-login! Don't store tokens or push authenticated screens.
       if (res?.access_token) {
         Alert.alert(
           "Signup Successful!",
@@ -97,23 +148,24 @@ export default function SignupScreen({ navigation }) {
       }
     } catch (error) {
       console.error("❌ Signup error caught:", error);
+      const errorMessage = error.response?.data?.detail || error.message;
       if (
-        error.message?.includes("already registered") ||
-        error.message?.includes("409")
+        errorMessage?.includes("already registered") ||
+        errorMessage?.includes("409")
       ) {
         Alert.alert("Account Exists", "Username or email already registered.");
       } else if (
-        error.message?.includes("Invalid JSON") ||
-        error.message?.includes("500")
+        errorMessage?.includes("Invalid JSON") ||
+        errorMessage?.includes("500")
       ) {
         Alert.alert(
           "Server Error",
           "Backend issue—try again or contact support."
         );
-      } else if (error.message?.includes("Network error")) {
+      } else if (errorMessage?.includes("Network error")) {
         Alert.alert("Network Error", "Check your connection and try again.");
       } else {
-        Alert.alert("Signup Failed", error.message || "Unknown error occurred");
+        Alert.alert("Signup Failed", errorMessage || "Unknown error occurred");
       }
     } finally {
       setLoading(false);
@@ -122,7 +174,12 @@ export default function SignupScreen({ navigation }) {
 
   const inputStyle = (key) => [
     styles.input,
-    focusedInput === key && styles.inputFocused,
+    errors[key] && styles.inputError,
+  ];
+
+  const passwordContainerStyle = (key) => [
+    styles.passwordContainer,
+    errors[key] && styles.inputError,
   ];
 
   return (
@@ -138,9 +195,9 @@ export default function SignupScreen({ navigation }) {
           >
             <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
               <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.subtitle}>Sign up to get started with ThingsNXT</Text>
-
-              {/* ... all your fields ... */}
+              <Text style={styles.subtitle}>
+                Sign up to get started with ThingsNXT
+              </Text>
 
               {/* Full Name */}
               <View style={styles.inputContainer}>
@@ -149,8 +206,6 @@ export default function SignupScreen({ navigation }) {
                   style={inputStyle("full_name")}
                   placeholder="Enter your full name"
                   value={formData.full_name}
-                  onFocus={() => setFocusedInput("full_name")}
-                  onBlur={() => setFocusedInput(null)}
                   onChangeText={(text) => updateFormData("full_name", text)}
                   placeholderTextColor="#999"
                   editable={!loading}
@@ -164,13 +219,14 @@ export default function SignupScreen({ navigation }) {
                   style={inputStyle("username")}
                   placeholder="Choose a username"
                   value={formData.username}
-                  onFocus={() => setFocusedInput("username")}
-                  onBlur={() => setFocusedInput(null)}
                   onChangeText={(text) => updateFormData("username", text)}
                   autoCapitalize="none"
                   placeholderTextColor="#999"
                   editable={!loading}
                 />
+                {errors.username && (
+                  <Text style={styles.errorText}>{errors.username}</Text>
+                )}
               </View>
 
               {/* Email */}
@@ -180,27 +236,26 @@ export default function SignupScreen({ navigation }) {
                   style={inputStyle("email")}
                   placeholder="Enter your email"
                   value={formData.email}
-                  onFocus={() => setFocusedInput("email")}
-                  onBlur={() => setFocusedInput(null)}
                   onChangeText={(text) => updateFormData("email", text)}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   placeholderTextColor="#999"
                   editable={!loading}
                 />
+                {errors.email && (
+                  <Text style={styles.errorText}>{errors.email}</Text>
+                )}
               </View>
 
               {/* Password */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Password *</Text>
-                <View style={styles.passwordContainer}>
+                <View style={passwordContainerStyle("password")}>
                   <TextInput
                     style={styles.passwordInput}
                     placeholder="Create a password"
                     value={formData.password}
-                    onFocus={() => setFocusedInput("password")}
-                    onBlur={() => setFocusedInput(null)}
-                    onChangeText={(text) => updateFormData("password", text)}
+                    onChangeText={handlePasswordChange}
                     secureTextEntry={!showPassword}
                     editable={!loading}
                     placeholderTextColor="#999"
@@ -216,7 +271,36 @@ export default function SignupScreen({ navigation }) {
                     />
                   </TouchableOpacity>
                 </View>
+                {errors.password && (
+                  <Text style={styles.errorText}>{errors.password}</Text>
+                )}
               </View>
+
+              {/* Password Strength Validation */}
+              {formData.password.length > 0 && (
+                <View style={styles.validationContainer}>
+                  <ValidationItem
+                    isValid={passwordValidation.minLength}
+                    text="At least 8 characters"
+                  />
+                  <ValidationItem
+                    isValid={passwordValidation.hasUppercase}
+                    text="Contains an uppercase letter"
+                  />
+                  <ValidationItem
+                    isValid={passwordValidation.hasLowercase}
+                    text="Contains a lowercase letter"
+                  />
+                  <ValidationItem
+                    isValid={passwordValidation.hasNumber}
+                    text="Contains a number"
+                  />
+                  <ValidationItem
+                    isValid={passwordValidation.hasSpecialChar}
+                    text="Contains a special character"
+                  />
+                </View>
+              )}
 
               {/* Confirm Password */}
               <View style={styles.inputContainer}>
@@ -225,22 +309,25 @@ export default function SignupScreen({ navigation }) {
                   style={inputStyle("confirmPassword")}
                   placeholder="Confirm your password"
                   value={formData.confirmPassword}
-                  onFocus={() => setFocusedInput("confirmPassword")}
-                  onBlur={() => setFocusedInput(null)}
                   onChangeText={(text) =>
                     updateFormData("confirmPassword", text)
                   }
-                  secureTextEntry={!showPassword}
+                  secureTextEntry
                   editable={!loading}
                   placeholderTextColor="#999"
                 />
+                {errors.confirmPassword && (
+                  <Text style={styles.errorText}>
+                    {errors.confirmPassword}
+                  </Text>
+                )}
               </View>
 
               {/* Sign Up Button */}
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, (loading || Object.values(passwordValidation).some(v => !v) || formData.password !== formData.confirmPassword) && styles.buttonDisabled]}
                 onPress={handleSignup}
-                disabled={loading}
+                disabled={loading || Object.values(passwordValidation).some(v => !v) || formData.password !== formData.confirmPassword}
                 activeOpacity={0.85}
               >
                 {loading ? (
@@ -294,13 +381,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
   },
-  inputFocused: {
-    borderColor: "#007AFF",
-    backgroundColor: "#fff",
-    shadowColor: "#007AFF",
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 2,
+  inputError: {
+    borderColor: "#D93025",
+  },
+  errorText: {
+    color: "#D93025",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 2,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -328,4 +416,21 @@ const styles = StyleSheet.create({
   },
   footerText: { color: "#444" },
   linkText: { color: "#007AFF", fontWeight: "700" },
+  validationContainer: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  validationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  validationText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
 });
