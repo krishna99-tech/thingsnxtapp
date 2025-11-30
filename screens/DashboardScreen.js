@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useContext, useState, useMemo } from "react";
+import React, { useEffect, useRef, useContext, useState, useMemo,useCallback } from "react";
 import {
   View,
   Text,
@@ -30,10 +30,11 @@ import { formatDate } from "../utils/format";
 
 export default function DashboardScreen({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { userToken, logout, wsRef, widgets, setWidgets, devices, isDarkTheme } =
+  const { userToken, logout, wsRef, devices, isDarkTheme } =
     useContext(AuthContext);
 
   const [loading, setLoading] = useState(true);
+  const [widgets, setWidgets] = useState([]); // Use local state for widgets
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const mountedRef = useRef(true);

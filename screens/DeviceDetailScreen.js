@@ -334,25 +334,21 @@ export default function DeviceDetailScreen({ route, navigation }) {
           <View style={styles.sensorsGrid}>
             {sensors.map((sensor) => (
               <TouchableOpacity key={sensor.id} style={styles.sensorCard} activeOpacity={0.8} onPress={() => handleSensorPress(sensor)}>
-                <>
-                  <View style={styles.sensorIconContainer}>
-                    {getSensorIcon(sensor.type, 24, COLORS.primary)}
-                  </View>
-                  <Text style={styles.sensorLabel}>{sensor.label}</Text>
-                  <View style={styles.sensorValueContainer}>
-                    <Text style={styles.sensorValue}>
-                      {typeof sensor.value === "number"
-                        ? sensor.value.toFixed(
-                            sensor.type === "temperature" ? 1 : 0
-                          )
-                        : String(sensor.value)}
-                    </Text>
-                    <Text style={styles.sensorUnit}>{sensor.unit}</Text>
-                  </View>
-                  <Text style={styles.sensorTimestamp}>
-                    Updated {getTimeSince(sensor.timestamp)}
+                <View style={styles.sensorIconContainer}>
+                  {getSensorIcon(sensor.type, 24, COLORS.primary)}
+                </View>
+                <Text style={styles.sensorLabel}>{sensor.label}</Text>
+                <View style={styles.sensorValueContainer}>
+                  <Text style={styles.sensorValue}>
+                    {typeof sensor.value === "number"
+                      ? sensor.value.toFixed(sensor.type === "temperature" ? 1 : 0)
+                      : String(sensor.value)}
                   </Text>
-                </>
+                  <Text style={styles.sensorUnit}>{sensor.unit}</Text>
+                </View>
+                <Text style={styles.sensorTimestamp}>
+                  Updated {getTimeSince(sensor.timestamp)}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>

@@ -199,9 +199,9 @@ export default function ResetPasswordScreen({ navigation, route }) {
                   editable={!loading}
                   placeholderTextColor="#999"
                 />
-                 {password && confirmPassword && password !== confirmPassword && (
+                {password && confirmPassword && password !== confirmPassword && (
                   <Text style={styles.errorText}>Passwords do not match.</Text>
-                )}
+                ) }
               </View>
 
               <TouchableOpacity

@@ -1,6 +1,4 @@
 // screens/HomeScreen.js
-throw new Error("FORCE BREAKPOINT");
-
 import React, { useContext, useState, useMemo, useCallback } from "react";
 import {
   View,
@@ -11,7 +9,6 @@ import {
   Dimensions,
   SafeAreaView,
   RefreshControl,
-  ActivityIndicator,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,7 +16,6 @@ import { AuthContext } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
-import { formatDate } from "../utils/format";
 import {
   Zap,
   Activity,
@@ -37,23 +33,13 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { Lightbulb, Thermometer } from "lucide-react-native";
+import StatCard from "../components/home/StatCard";
+import HomeSection from "../components/home/HomeSection";
 
 // 📱 Responsive scaling based on device width
 const { width, height } = Dimensions.get("window");
 const CARD_PADDING = 16;
 const CARD_GAP = 12;
-
-const mockEnergyData = [
-  { label: "Mon", value: 30 },
-  { label: "Tue", value: 45 },
-  { label: "Wed", value: 28 },
-  { label: "Thu", value: 60 },
-  { label: "Fri", value: 50 },
-  { label: "Sat", value: 75 },
-  { label: "Sun", value: 90 },
-];
-
-
 
 const getDeviceIcon = (type, size = 24, color = "#FFFFFF") => {
   const iconProps = { size, color };
@@ -119,6 +105,83 @@ const getDashboardGradient = (type, Colors) => {
   }
 };
 
+const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress }) => (
+  <LinearGradient
+    colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
+    style={styles.header}
+  >
+    <View style={styles.headerContent}>
+      <View>
+        <Text style={[styles.greeting, { color: Colors.textSecondary }]}>Welcome back, {username || "User"} 👋</Text>
+        <Text style={[styles.title, { color: Colors.text }]}>ThingsNXT</Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.notificationButton, { backgroundColor: Colors.surfaceLight }]}
+        onPress={onNotificationPress}
+      >
+        <Bell size={24} color={Colors.white} />
+      </TouchableOpacity>
+    </View>
+  </LinearGradient>
+);
+
+const DashboardCard = ({ dashboard, onPress, Colors }) => {
+  const gradientColors = getDashboardGradient(dashboard.type, Colors);
+  return (
+    <TouchableOpacity
+      style={styles.dashboardCard}
+      onPress={() => onPress(dashboard)}
+      activeOpacity={0.7}
+    >
+      <LinearGradient colors={gradientColors} style={styles.dashboardGradient}>
+        <View style={styles.dashboardHeader}>
+          <View style={styles.dashboardIconContainer}>
+            {getDashboardIcon(dashboard.type, 24)}
+          </View>
+          <ChevronRight size={20} color={Colors.white} />
+        </View>
+        <Text style={styles.dashboardName}>{dashboard.name}</Text>
+        <Text style={styles.dashboardValue}>
+          {dashboard.primaryMetric?.value || '--'}
+          {dashboard.primaryMetric?.unit && (
+            <Text style={styles.dashboardUnit}> {dashboard.primaryMetric.unit}</Text>
+          )}
+        </Text>
+        <Text style={styles.dashboardLabel}>
+          {dashboard.primaryMetric?.label || 'Primary Metric'}
+        </Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+};
+
+const DeviceCard = ({ device, onPress, Colors }) => (
+  <TouchableOpacity
+    style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
+    onPress={() => onPress(device)}
+    activeOpacity={0.7}
+  >
+    <View style={styles.deviceCardHeader}>
+      <View style={[styles.deviceIcon, { backgroundColor: device.status === "online" ? Colors.primary + "20" : Colors.surfaceLight }]}>
+        {getDeviceIcon(device.type, 20, device.status === 'online' ? Colors.primary : Colors.textMuted)}
+      </View>
+      {getStatusIcon(device.status, 14)}
+    </View>
+    <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
+      {device.name}
+    </Text>
+    <Text style={[styles.deviceRoom, { color: Colors.textMuted }]}>{device.type}</Text>
+    {device.isOn !== undefined && !device.value && (
+      <View style={[styles.deviceStatus, { backgroundColor: device.isOn ? Colors.success + "20" : Colors.surfaceLight }]}>
+        <Text style={[styles.deviceStatusText, { color: device.isOn ? Colors.success : Colors.textMuted }]}>
+          {device.isOn ? "ON" : "OFF"}
+        </Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { username, devices = [], isDarkTheme, userToken, logout } = useContext(AuthContext);
@@ -182,31 +245,14 @@ export default function HomeScreen() {
   const activeDevices = devices.filter(
     (d) => d?.status === "online" && d?.isOn
   ).length;
-  const maxEnergy = Math.max(...mockEnergyData.map(d => d.value));
 
   const recentDevices = useMemo(() => {
-    return devices.slice(0, 4);
+    return devices.slice(0, 4); // Show up to 4 recent devices
   }, [devices]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]}>
-      <LinearGradient
-        colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={[styles.greeting, { color: Colors.textSecondary }]}>Welcome back, {username || "User"} 👋</Text>
-            <Text style={[styles.title, { color: Colors.text }]}>ThingsNXT</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.notificationButton, { backgroundColor: Colors.surfaceLight }]}
-            onPress={() => navigation.navigate('Notifications')}
-          >
-            <Bell size={24} color={Colors.white} />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+      <HomeHeader username={username} isDarkTheme={isDarkTheme} Colors={Colors} onNotificationPress={() => navigation.navigate('Notifications')} />
 
       <ScrollView
         style={styles.scrollView}
@@ -222,182 +268,76 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={[Colors.primary, Colors.primaryDark]}
-              style={styles.statGradient}
-            >
-              <View style={styles.statIcon}>
-                <Activity size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.statValueLg}>{devices.length}</Text>
-              <Text style={styles.statTitle}>Total Devices</Text>
-            </LinearGradient>
-          </View>
-
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={[Colors.success, "#059669"]}
-              style={styles.statGradient}
-            >
-              <View style={styles.statIcon}>
-                <Wifi size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.statValueSm}>{onlineDevices}</Text>
-              <Text style={styles.statTitle}>Online</Text>
-            </LinearGradient>
-          </View>
-
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={[Colors.secondary, "#DB2777"]}
-              style={styles.statGradient}
-            >
-              <View style={styles.statIcon}>
-                <Zap size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.statValueSm}>{activeDevices}</Text>
-              <Text style={styles.statTitle}>Active</Text>
-            </LinearGradient>
-          </View>
-
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={[Colors.danger, "#C11B48"]}
-              style={styles.statGradient}
-            >
-              <View style={styles.statIcon}>
-                <WifiOff size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.statValueSm}>{offlineDevices}</Text>
-              <Text style={styles.statTitle}>Offline</Text>
-            </LinearGradient>
-          </View>
+          <StatCard
+            colors={[Colors.primary, Colors.primaryDark]}
+            icon={<Activity size={24} color={Colors.white} />}
+            value={devices.length}
+            title="Total Devices"
+            isLarge
+          />
+          <StatCard
+            colors={[Colors.success, "#059669"]}
+            icon={<Wifi size={24} color={Colors.white} />}
+            value={onlineDevices}
+            title="Online"
+          />
+          <StatCard
+            colors={[Colors.secondary, "#DB2777"]}
+            icon={<Zap size={24} color={Colors.white} />}
+            value={activeDevices}
+            title="Active"
+          />
+          <StatCard
+            colors={[Colors.danger, "#C11B48"]}
+            icon={<WifiOff size={24} color={Colors.white} />}
+            value={offlineDevices}
+            title="Offline"
+          />
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Dashboards</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Dashboards")}>
-              <Text style={[styles.sectionLink, { color: Colors.primary }]}>Customize</Text>
-            </TouchableOpacity>
-          </View>
-
+        <HomeSection
+          title="Dashboards"
+          linkText="Customize"
+          onLinkPress={() => navigation.navigate("Dashboards")}
+          titleColor={Colors.text}
+          linkColor={Colors.primary}
+        >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dashboardsScroll}
           >
-            {dashboards.map(dashboard => {
-              const gradientColors = getDashboardGradient(dashboard.type, Colors);
-              return (
-                <TouchableOpacity
-                  key={dashboard._id}
-                  style={styles.dashboardCard}
-                  onPress={() => navigation.navigate('Dashboard', { dashboard })}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={gradientColors}
-                    style={styles.dashboardGradient}
-                  >
-                    <View style={styles.dashboardHeader}>
-                      <View style={styles.dashboardIconContainer}>
-                        {getDashboardIcon(dashboard.type, 24)}
-                      </View>
-                      <ChevronRight size={20} color={Colors.white} />
-                    </View>
-                    <Text style={styles.dashboardName}>{dashboard.name}</Text>
-<Text style={styles.dashboardValue}>
-  {dashboard.primaryMetric?.value || '--'}
-  {dashboard.primaryMetric?.unit ? (
-    <Text style={styles.dashboardUnit}> {dashboard.primaryMetric.unit}</Text>
-  ) : null}
-</Text>
-
-                    <Text style={styles.dashboardLabel}>
-                      {dashboard.primaryMetric?.label || 'Primary Metric'}
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              );
-            })}
+            {dashboards.map(dashboard => (
+              <DashboardCard
+                key={dashboard._id}
+                dashboard={dashboard}
+                onPress={(d) => navigation.navigate('Dashboard', { dashboard: d })}
+                Colors={Colors}
+              />
+            ))}
           </ScrollView>
-        </View>
+        </HomeSection>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Quick Access</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Devices")}>
-              <Text style={[styles.sectionLink, { color: Colors.primary }]}>See all</Text>
-            </TouchableOpacity>
-          </View>
-
+        <HomeSection
+          title="Quick Access"
+          linkText="See all"
+          onLinkPress={() => navigation.navigate("Devices")}
+          titleColor={Colors.text}
+          linkColor={Colors.primary}
+        >
           <View style={styles.devicesGrid}>
             {recentDevices.map((device) => (
-              <TouchableOpacity
+              <DeviceCard
                 key={String(device.id || device._id)}
-                style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
-                onPress={() =>
+                device={device}
+                Colors={Colors}
+                onPress={(d) =>
                   navigation.navigate("DeviceDetail", { deviceId: String(device.id || device._id) })
                 }
-                activeOpacity={0.7}
-              >
-                <View style={styles.deviceCardHeader}>
-                  <View
-                    style={[
-                      styles.deviceIcon,
-                      {
-                        backgroundColor:
-                          device.status === "online"
-                            ? Colors.primary + "20"
-                            : Colors.surfaceLight,
-                      },
-                    ]}
-                  >
-                    {getDeviceIcon(device.type, 20, device.status === 'online' ? Colors.primary : Colors.textMuted)}
-                  </View>
-                  {getStatusIcon(device.status, 14)}
-                </View>
-
-                <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
-                  {device.name}
-                </Text>
-                <Text style={[styles.deviceRoom, { color: Colors.textMuted }]}>{device.type}</Text>
-
-                {device.value !== undefined && (
-                  <View style={[styles.deviceValue, { backgroundColor: Colors.primary + "20" }]}>
-                    <Text style={[styles.deviceValueText, { color: Colors.primary }]}>
-                      {`${device.value}${device.unit || ''}`}
-                    </Text>
-                  </View>
-                )}
-
-                {device.isOn !== undefined && !device.value && (
-                  <View
-                    style={[
-                      styles.deviceStatus,
-                      {
-                        backgroundColor: device.isOn
-                          ? Colors.success + "20"
-                          : Colors.surfaceLight,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.deviceStatusText,
-                        { color: device.isOn ? Colors.success : Colors.textMuted },
-                      ]}
-                    >
-                      {device.isOn ? "ON" : "OFF"}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              />
             ))}
           </View>
-        </View>
+        </HomeSection>
       </ScrollView>
     </SafeAreaView>
   );
@@ -461,52 +401,9 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     gap: CARD_GAP,
   },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  statGradient: {
-    padding: 16,
-    alignItems: "center",
-  },
-  statIcon: {
-    marginBottom: 8,
-  },
-  statValueLg: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 4,
-  },
-  statValueSm: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 2,
-  },
-  statTitle: {
-    fontSize: 11,
-    color: "#FFFFFF",
-    opacity: 0.9,
-  },
    section: {
     marginTop: 28,
     paddingHorizontal: CARD_PADDING,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  sectionLink: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   devicesGrid: {
     flexDirection: "row",

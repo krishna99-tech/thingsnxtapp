@@ -179,11 +179,6 @@ export default function MainDashboardScreen() {
     <LinearGradient colors={isDarkTheme ? ["#2C5364", "#203A43", "#0F2027"] : ["#FF6347", "#FF8264"]} style={styles.header}>
       <Text style={styles.title}>My Dashboards</Text>
       <TouchableOpacity onPress={() => setModalVisible(true)}>
-
-
-
-
-        
         <Ionicons name="add-circle" size={36} color="#fff" />
       </TouchableOpacity>
     </LinearGradient>

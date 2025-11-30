@@ -1,5 +1,5 @@
 
-import React, { useContext, useEffect, useState, useCallback } from "react";
+import React, { useContext, useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,159 +9,22 @@ import {
   ScrollView,
   Modal,
   Alert,
-  RefreshControl,
   ActivityIndicator,
-  Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
 import {
   GestureHandlerRootView,
-  Swipeable,
 } from "react-native-gesture-handler";
 import {
   Search,
   Filter,
-  Trash,
-  Lightbulb,
-  Thermometer,
-  Activity,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  PowerPlug,
-  DoorClosed,
-  Cpu,
-  Edit,
   Plus,
 } from "lucide-react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { showToast } from "../components/Toast";
-import { formatDate } from "../utils/format";
+import DeviceList from "./DeviceList";
 
 const CARD_PADDING = 16;
-
-const getDeviceIcon = (type, size = 24, color = "#FFFFFF") => {
-  const iconProps = { size, color };
-  switch (type) {
-    case "light":
-      return <Lightbulb {...iconProps} />;
-    case "thermostat":
-      return <Thermometer {...iconProps} />;
-    case "plug":
-      return <PowerPlug {...iconProps} />;
-    case "door":
-      return <DoorClosed {...iconProps} />;
-    default:
-      return <Cpu {...iconProps} />;
-  }
-};
-
-const getStatusIcon = (status, size = 16) => {
-  switch (status) {
-    case "online":
-      return <Wifi size={size} color="#00FF88" />;
-    case "offline":
-      return <WifiOff size={size} color="#FF3366" />;
-    case "warning":
-      return <AlertTriangle size={size} color="#FFB800" />;
-    default:
-      return null;
-  }
-};
-
-const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
-  const Colors = {
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#F1F5F9",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-    success: "#00FF88",
-  };
-
-  const renderRightActions = (progress, dragX) => {
-    const trans = dragX.interpolate({
-      inputRange: [-80, 0],
-      outputRange: [0, 80],
-      extrapolate: "clamp",
-    });
-    return (
-      <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
-        <Animated.View style={[styles.deleteButtonView, { transform: [{ translateX: trans }] }]}>
-          <Trash size={24} color="#FFFFFF" />
-        </Animated.View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderLeftActions = (progress, dragX) => {
-    const trans = dragX.interpolate({
-      inputRange: [0, 80],
-      outputRange: [-80, 0],
-      extrapolate: "clamp",
-    });
-    return (
-      <TouchableOpacity onPress={onEdit} style={styles.editButton}>
-        <Animated.View style={[styles.editButtonView, { transform: [{ translateX: trans }] }]}>
-          <Edit size={24} color="#FFFFFF" />
-        </Animated.View>
-      </TouchableOpacity>
-    );
-  };
-
-  return (
-    <Swipeable
-      renderRightActions={renderRightActions}
-      renderLeftActions={renderLeftActions}
-      overshootRight={false}
-      overshootLeft={false}
-    >
-      <TouchableOpacity
-        style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
-        onPress={onPress}
-        activeOpacity={0.7}
-      >
-        <View style={styles.deviceCardContent}>
-          <View
-            style={[
-              styles.deviceIcon,
-              {
-                backgroundColor:
-                  device.status === "online"
-                    ? Colors.primary + "20"
-                    : Colors.surfaceLight,
-              },
-            ]}
-          >
-            {getDeviceIcon(device.type, 28, Colors.primary)}
-          </View>
-
-          <View style={styles.deviceInfo}>
-            <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
-              {device.name}
-            </Text>
-            <Text style={[styles.deviceRoom, { color: Colors.textMuted }]}>{device.type}</Text>
-          </View>
-
-          <View style={styles.deviceRight}>
-            {getStatusIcon(device.status, 16)}
-
-            {device.value !== undefined && (
-              <View style={[styles.deviceValue, { backgroundColor: Colors.primary + "20" }]}>
-                <Text style={[styles.deviceValueText, { color: Colors.primary }]}>
-                  {String(device.value)}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Swipeable>
-  );
-};
 
 export default function DevicesScreen({ navigation }) {
   const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices } = useContext(AuthContext);
@@ -191,8 +54,8 @@ export default function DevicesScreen({ navigation }) {
     textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
     danger: isDarkTheme ? "#FF3366" : "#DC2626",
   };
-
-  const filteredDevices = useCallback(() => devices.filter((device) => {
+  
+  const filteredDevices = useMemo(() => devices.filter((device) => {
     const name = device.name || "";
     const type = device.type || "";
     const matchesSearch =
@@ -203,7 +66,7 @@ export default function DevicesScreen({ navigation }) {
     return matchesSearch && matchesStatus;
   }, [devices, searchQuery, selectedStatus]), [devices, searchQuery, selectedStatus]);
 
-  const statusFilters = useCallback(() => [
+  const statusFilters = useMemo(() => [
     { label: "All", value: "all", count: devices.length },
     {
       label: "Online",
@@ -353,7 +216,7 @@ export default function DevicesScreen({ navigation }) {
           contentContainerStyle={styles.filterScrollContent}
           style={styles.filterScroll}
         >
-          {statusFilters().map((filter) => (
+          {statusFilters.map((filter) => (
             <TouchableOpacity
               key={filter.value}
               style={[
@@ -391,43 +254,16 @@ export default function DevicesScreen({ navigation }) {
         </ScrollView>
       </LinearGradient>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
-        }
-      >
-        {filteredDevices().length === 0 ? (
-          <View style={styles.emptyState}>
-            <Activity size={48} color={Colors.textMuted} />
-            <Text style={[styles.emptyStateTitle, { color: Colors.text }]}>No devices found</Text>
-            <Text style={[styles.emptyStateText, { color: Colors.textMuted }]}>
-              Try adjusting your search or filters
-            </Text>
-          </View>
-        ) : (
-          filteredDevices().map((device) => (
-            <DeviceCard
-              key={device.id || device._id}
-              device={device}
-              isDarkTheme={isDarkTheme}
-              onEdit={() => handleOpenEditModal(device)}
-              onDelete={() => handleDeleteDevice(device)}
-              onPress={() =>
-                navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })
-              }
-            />
-          ))
-        )}
-        
-      </ScrollView>
+      <DeviceList
+        devices={filteredDevices}
+        isDarkTheme={isDarkTheme}
+        onEdit={handleOpenEditModal}
+        onDelete={handleDeleteDevice}
+        onPress={(device) => navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        Colors={Colors}
+      />
 
       {/* Add Device FAB */}
       <TouchableOpacity
@@ -626,83 +462,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   filterChipBadgeTextActive: {},
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: CARD_PADDING,
-    paddingBottom: 100,
-  },
-  deviceCard: {
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  deviceCardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  deviceIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deviceInfo: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  deviceName: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  deviceRoom: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  deviceRight: {
-    alignItems: "flex-end",
-    gap: 8,
-  },
-  deviceValue: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  deviceValueText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  deviceStatusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  deviceStatusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    textAlign: "center",
-  },
   fab: {
     position: "absolute",
     width: 60,
@@ -763,33 +522,5 @@ const styles = StyleSheet.create({
     color: "#DC2626",
     fontSize: 12,
     marginTop: 4,
-  },
-  deleteButton: {
-    width: 80,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  deleteButtonView: {
-    flex: 1,
-    backgroundColor: "#FF3B30",
-    justifyContent: "center",
-    alignItems: "center",
-    width: 80,
-    borderRadius: 16,
-  },
-  editButton: {
-    width: 80,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  editButtonView: {
-    flex: 1,
-    backgroundColor: "#3498db",
-    justifyContent: "center",
-    alignItems: "center",
-    width: 80,
-    borderRadius: 16,
   },
 });
