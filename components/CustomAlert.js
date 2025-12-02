@@ -37,6 +37,26 @@ const CustomAlert = ({
     destructiveButton: '#DC2626',
   };
 
+  const BUTTON_STYLES = {
+    primary: {
+      backgroundColor: ThemeColors.primaryButton,
+      color: ThemeColors.primaryButtonText,
+    },
+    destructive: {
+      backgroundColor: ThemeColors.destructiveButton,
+      color: ThemeColors.primaryButtonText,
+    },
+    cancel: {
+      backgroundColor: isDarkTheme ? ThemeColors.surfaceLight : '#E2E8F0',
+      color: ThemeColors.buttonText,
+    },
+    // Default style for any unrecognized button style
+    default: {
+      backgroundColor: isDarkTheme ? ThemeColors.surfaceLight : '#E2E8F0',
+      color: ThemeColors.buttonText,
+    },
+  };
+
   const iconColor = COLORS[type] || COLORS.confirm;
 
   return (
@@ -63,15 +83,15 @@ const CustomAlert = ({
 
           <View style={styles.buttonContainer}>
             {buttons.map((button, index) => {
-              const isPrimary = button.style !== 'cancel' && button.style !== 'destructive';
+              // Get the style config for the button, or use default
+              const styleConfig = BUTTON_STYLES[button.style] || BUTTON_STYLES.default;
+
               const buttonStyle = [
                 styles.button,
-                button.style === 'destructive' && { backgroundColor: ThemeColors.destructiveButton },
-                isPrimary && { backgroundColor: ThemeColors.primaryButton },
+                { backgroundColor: styleConfig.backgroundColor },
               ];
               const textStyle = [
-                styles.buttonText,
-                (isPrimary || button.style === 'destructive') ? { color: ThemeColors.primaryButtonText } : { color: ThemeColors.buttonText },
+                styles.buttonText, { color: styleConfig.color }
               ];
 
               return (

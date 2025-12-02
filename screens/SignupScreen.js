@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
+import CustomAlert from "../components/CustomAlert";
 
 const ValidationItem = ({ isValid, text }) => (
   <View style={styles.validationItem}>
@@ -49,6 +49,8 @@ export default function SignupScreen({ navigation }) {
     hasSpecialChar: false,
   });
 
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
   const [errors, setErrors] = useState({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -135,11 +137,19 @@ export default function SignupScreen({ navigation }) {
       const res = await api.signup(payload);
 
       if (res?.access_token) {
-        Alert.alert(
-          "Signup Successful!",
-          "Your account has been created. Please log in with your new credentials."
-        );
-        navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+        setAlertConfig({
+          type: 'success',
+          title: "Signup Successful!",
+          message: "Your account has been created. Please log in with your new credentials.",
+          buttons: [{
+            text: 'Login',
+            onPress: () => {
+              setAlertVisible(false);
+              navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+            }
+          }]
+        });
+        setAlertVisible(true);
       } else {
         throw new Error(
           res?.detail ||
@@ -153,19 +163,35 @@ export default function SignupScreen({ navigation }) {
         errorMessage?.includes("already registered") ||
         errorMessage?.includes("409")
       ) {
-        Alert.alert("Account Exists", "Username or email already registered.");
+        setAlertConfig({ type: 'error', title: "Account Exists", message: "Username or email already registered.", buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }] });
+        setAlertVisible(true);
       } else if (
         errorMessage?.includes("Invalid JSON") ||
         errorMessage?.includes("500")
       ) {
-        Alert.alert(
-          "Server Error",
-          "Backend issue—try again or contact support."
-        );
+        setAlertConfig({
+          type: 'error',
+          title: "Server Error",
+          message: "Backend issue—try again or contact support.",
+          buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       } else if (errorMessage?.includes("Network error")) {
-        Alert.alert("Network Error", "Check your connection and try again.");
+        setAlertConfig({
+          type: 'error',
+          title: "Network Error",
+          message: "Check your connection and try again.",
+          buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       } else {
-        Alert.alert("Signup Failed", errorMessage || "Unknown error occurred");
+        setAlertConfig({
+          type: 'error',
+          title: "Signup Failed",
+          message: errorMessage || "Unknown error occurred",
+          buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       }
     } finally {
       setLoading(false);
@@ -350,6 +376,11 @@ export default function SignupScreen({ navigation }) {
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
+        <CustomAlert
+          visible={alertVisible}
+          isDarkTheme={true} // Assuming a dark theme for this screen
+          {...alertConfig}
+        />
       </SafeAreaView>
     </LinearGradient>
   );

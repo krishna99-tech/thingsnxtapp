@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -31,6 +30,7 @@ import { AuthContext } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE } from "../constants/config";
 import { formatDate } from "../utils/format";
+import CustomAlert from "../components/CustomAlert";
 // Use formatDate(notification.created_at) or similar for displaying dates in notification list.
 
 const formatTimestamp = (date) => {
@@ -57,6 +57,8 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -298,8 +300,14 @@ export default function NotificationsScreen() {
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
       console.error("Error marking all as read:", err);
-      Alert.alert("Error", "Could not mark all notifications as read.");
       if (err.response?.status === 401) logout();
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Could not mark all notifications as read.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -322,11 +330,14 @@ export default function NotificationsScreen() {
       );
     } catch (err) {
       console.error("Error deleting notification:", err);
-      Alert.alert(
-        "Error",
-        "Could not delete the notification. Please try again."
-      );
       if (err.response?.status === 401) logout();
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Could not delete the notification. Please try again.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -466,6 +477,11 @@ export default function NotificationsScreen() {
               }
             />
           )}
+        <CustomAlert
+          visible={alertVisible}
+          isDarkTheme={isDarkTheme}
+          {...alertConfig}
+        />
       </View>
     </LinearGradient>
   );

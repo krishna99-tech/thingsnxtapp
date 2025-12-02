@@ -1,23 +1,24 @@
-import React, { useEffect, useRef, useContext, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useContext, useState, useMemo, useCallback, memo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   TouchableOpacity,
   Animated,
+  Pressable,
   RefreshControl,
-  FlatList,
   Modal,
   TextInput,
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { DraggableGrid } from "react-native-draggable-grid";
 import { LinearGradient } from "expo-linear-gradient";
-import axios from "axios";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthContext } from "../context/AuthContext";
-import { API_BASE } from "../constants/config";
+import api from "../services/api";
+import { DashboardProvider, useDashboard } from "../context/DashboardContext";
 
 import CustomAlert from "../components/CustomAlert";
 // 🧩 Widget components
@@ -25,29 +26,153 @@ import CardWidget from "../components/CardWidget";
 import GaugeWidget from "../components/GaugeWidget";
 import IndicatorWidget from "../components/IndicatorWidget";
 import LEDControlWidget from "../components/LEDControlWidget";
+import ChartWidget from "../components/ChartWidget";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
+import { moderateScale } from "../utils/scaling";
 
-export default function DashboardScreen({ route, navigation }) {
+// 🎯 Memoized Widget Component - Prevents unnecessary re-renders
+const MemoizedWidget = memo(({ 
+  item, 
+  editMode, 
+  isDarkTheme,
+  onWidgetLongPress,
+  onDeleteWidget,
+  onResizeWidget
+}) => {
+  if (!item) return null;
+
+  // Select the correct component
+  let component = null;
+
+  switch (item.type) {
+    case "gauge":
+      component = (
+        <GaugeWidget
+          title={item.label}
+          value={item.value}
+          telemetry={item.telemetry?.[item.config?.key]}
+        />
+      );
+      break;
+
+    case "indicator":
+      component = (
+        <IndicatorWidget
+          title={item.label}
+          value={item.value}
+          telemetry={item.telemetry?.[item.config?.key]}
+        />
+      );
+      break;
+
+    case "led":
+      component = (
+        <LEDControlWidget
+          title={item.label}
+          widgetId={item._id}
+          deviceId={item.device_id}
+          deviceToken={item.device_token}
+          virtualPin={item.virtual_pin}
+          initialState={!!item.value}
+          nextSchedule={item.next_schedule}
+          onLongPress={() => onWidgetLongPress(item._id)}
+          onDelete={() => onDeleteWidget(item._id)}
+        />
+      );
+      break;
+
+    case "chart":
+      component = (
+        <ChartWidget
+          title={item.label}
+          deviceId={item.device_id}
+          config={item.config}
+          isDarkTheme={isDarkTheme}
+          lastUpdated={item.lastUpdated}
+        />
+      );
+      break;
+
+    default:
+      component = (
+        <CardWidget
+          title={item.label}
+          value={item.value}
+          telemetry={item.telemetry?.[item.config?.key]}
+          isDarkTheme={isDarkTheme}
+        />
+      );
+  }
+
+  const isLarge = item.width === 2;
+
+  return (
+    <View style={[styles.widgetWrapper, isLarge && styles.widgetWrapperLarge]}>
+      <View style={{ flex: 1 }}>
+        {component}
+      </View>
+
+      {editMode && (
+        <View style={styles.editOverlay}>
+          {/* Resize */}
+          <TouchableOpacity
+            style={styles.resizeHandle}
+            onPress={() => onResizeWidget(item._id, item.width)}
+          >
+            <Ionicons
+              name={isLarge ? "contract-outline" : "expand-outline"}
+              size={18}
+              color="#fff"
+            />
+          </TouchableOpacity>
+
+          {/* Delete */}
+          <TouchableOpacity
+            style={styles.deleteHandle}
+            onPress={() => onDeleteWidget(item._id)}
+            onPressIn={(e) => e.stopPropagation()}
+          >
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}, (prevProps, nextProps) => {
+  // Only re-render if these specific props change
+  return (
+    prevProps.item._id === nextProps.item._id &&
+    prevProps.item.value === nextProps.item.value &&
+    prevProps.item.width === nextProps.item.width &&
+    prevProps.item.height === nextProps.item.height &&
+    prevProps.item.next_schedule === nextProps.item.next_schedule &&
+    prevProps.item.lastUpdated === nextProps.item.lastUpdated &&
+    prevProps.editMode === nextProps.editMode &&
+    prevProps.isDarkTheme === nextProps.isDarkTheme
+  );
+});
+
+// 🎯 Main Dashboard Component
+function DashboardContent({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { userToken, logout, wsRef, devices, isDarkTheme } = useContext(AuthContext);
+  const { logout, devices, isDarkTheme } = useContext(AuthContext);
+  const { widgets, setWidgets, loading, refreshing, onRefresh, fetchWidgets } = useDashboard();
 
-  const [loading, setLoading] = useState(true);
-  const [widgets, setWidgets] = useState([]); // Use local state for widgets
-  const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const mountedRef = useRef(true);
-  const isFetchingRef = useRef(false);
   const [addLedModalVisible, setAddLedModalVisible] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [ledLabel, setLedLabel] = useState("");
   const [creatingLed, setCreatingLed] = useState(false);
-
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  const insets = useSafeAreaInsets();
+
+  const [editMode, setEditMode] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   // Theme-based styles
-  const themeStyles = {
+  const themeStyles = useMemo(() => ({
     gradient: isDarkTheme ? ["#0f2027", "#203a43", "#2c5364"] : ["#e6f3ff", "#ffffff"],
     header: {
       backgroundColor: isDarkTheme ? "rgba(0,0,0,0.3)" : "#ffffffcc",
@@ -64,10 +189,10 @@ export default function DashboardScreen({ route, navigation }) {
     deviceName: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
     deviceToken: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
     input: { color: isDarkTheme ? "#FFFFFF" : "#111827", borderColor: isDarkTheme ? "#444" : "#cbd5f5" },
-  };
+  }), [isDarkTheme]);
 
   // 🧹 Delete dashboard
-  const handleDeleteDashboard = () => {
+  const handleDeleteDashboard = useCallback(() => {
     setAlertConfig({
       type: 'confirm',
       title: "Delete Dashboard",
@@ -80,12 +205,7 @@ export default function DashboardScreen({ route, navigation }) {
           onPress: async () => {
             setAlertVisible(false);
             try {
-              await axios.delete(
-                `${API_BASE}/dashboards/${dashboard._id}`,
-                {
-                  headers: { Authorization: `Bearer ${userToken}` },
-                }
-              );
+              await api.deleteDashboard(dashboard._id);
               showToast.success("Dashboard removed successfully");
               navigation.goBack();
             } catch (err) {
@@ -98,202 +218,9 @@ export default function DashboardScreen({ route, navigation }) {
       ],
     });
     setAlertVisible(true);
-  };
+  }, [dashboard._id, logout, navigation]);
 
-  // 🧩 Map devices to tokens (for LED widgets)
-  const fetchDevicesMap = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/devices`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
-      return res.data.reduce((map, d) => {
-        map[d._id] = d.device_token;
-        return map;
-      }, {});
-    } catch (err) {
-      console.error("❌ Fetch devices error:", err);
-      if (err.response?.status === 401) logout();
-      return {};
-    }
-  };
-
-  // 📦 Fetch widgets
-  const fetchWidgets = useCallback(async () => {
-    if (isFetchingRef.current || !userToken || !dashboard?._id) return;
-    isFetchingRef.current = true;
-  
-    try {
-      if (!refreshing) setLoading(true);
-      console.log("📡 Fetching widgets for dashboard:", dashboard._id);
-
-      const deviceMap = await fetchDevicesMap();
-      const res = await axios.get(`${API_BASE}/widgets/${dashboard._id}`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
-  
-      const fetched =
-        Array.isArray(res.data) ? res.data : res.data.widgets || [];
-
-      if (!Array.isArray(fetched)) {
-        console.error("❌ Invalid widgets format from API:", res.data);
-        return;
-      }
-  
-      const processed = fetched
-        .map((w, i) => {
-          const id = w._id?.toString?.() || `temp-${dashboard._id}-${i}`;
-          const ledValue =
-            typeof w.value === "number"
-              ? w.value
-              : w.value
-              ? 1
-              : 0;
-          return {
-            ...w,
-            _id: id, // ✅ Ensure stable string ID
-            device_token:
-              w.type === "led" && w.device_id
-                ? deviceMap[w.device_id] || null
-                : null,
-            value:
-              w.type === "led"
-                ? ledValue
-                : w.value ?? "--",
-            virtual_pin: w.config?.virtual_pin,
-          };
-        })
-        .filter((w) => w.type !== "led" || w.device_token);
-  
-      if (mountedRef.current) {
-        console.log("✅ Widgets loaded:", processed.length);
-        setWidgets(processed);
-        Animated.sequence([
-          Animated.timing(fadeAnim, {
-            toValue: 0.5,
-            duration: 150,
-            useNativeDriver: true,
-          }),
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 250,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }
-    } catch (err) {
-      console.error("❌ Fetch widgets error:", err);
-      if (err.response?.status === 401) logout();
-      showToast.error("Failed to load widgets.");
-    } finally {
-      isFetchingRef.current = false;
-      if (mountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, [userToken, dashboard?._id, refreshing, setWidgets, mountedRef, isFetchingRef, logout]);
-
-  // 📡 WebSocket listener for telemetry + widget updates
-  useEffect(() => {
-    if (!wsRef?.current || !dashboard?._id) return;
-  
-    const handleWSMessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-
-        if (msg.type === "widget_update" && String(msg.dashboard_id) === String(dashboard._id)) {
-          setWidgets((prev) => {
-            const found = prev.some((w) => String(w._id) === String(msg.widget._id));
-            if (found) {
-              return prev.map((w) => {
-                if (String(w._id) === String(msg.widget._id)) {
-                  // For LED widgets, ensure value is properly set
-                  const updated = { ...w, ...msg.widget };
-                  if (updated.type === "led" && updated.value !== undefined) {
-                    updated.value = updated.value ? 1 : 0;
-                  }
-                  // Ensure virtual_pin is preserved
-                  if (updated.config?.virtual_pin) {
-                    updated.virtual_pin = updated.config.virtual_pin;
-                  }
-                  return updated;
-                }
-                return w;
-              });
-            }
-            return [...prev, msg.widget];
-          });
-        } else if (
-          (msg.type === "led_schedule_executed" ||
-            msg.type === "led_schedule_cancelled") &&
-          String(msg.dashboard_id) === String(dashboard._id)
-        ) {
-          // Update schedules via WebSocket, no need to refetch
-          // The LED widget will handle schedule updates internally
-        } else if (msg.type === "widget_deleted" && String(msg.dashboard_id) === String(dashboard._id)) {
-          // Remove deleted widget from state immediately
-          setWidgets((prev) => prev.filter((w) => String(w._id) !== String(msg.widget_id)));
-        } else if (msg.type === "telemetry_update" && msg.device_id) {
-          setWidgets((prev) =>
-            prev.map((w) => {
-              // Only process widgets that belong to the device in the message
-              if (String(w.device_id) !== String(msg.device_id)) {
-                return w;
-              }
-
-              // Create a mutable copy to apply updates
-              let updatedWidget = { ...w };
-              let hasUpdate = false;
-
-              // Handle LED widgets with virtual pins
-              if (w.type === "led" && w.virtual_pin) {
-                const virtualPinKey = w.virtual_pin.toLowerCase();
-                if (msg.data && msg.data[virtualPinKey] !== undefined) {
-                  const newValue = msg.data[virtualPinKey] ? 1 : 0;
-                  if (newValue !== (w.value ? 1 : 0)) {
-                    updatedWidget.value = newValue;
-                    hasUpdate = true;
-                  }
-                }
-              } 
-              // Handle other widgets with a 'key' in their config
-              else if (w.config?.key && msg.data && w.config.key in msg.data) {
-                const key = w.config.key;
-                const newValue = msg.data[key];
-                if (newValue !== w.value) {
-                  updatedWidget.value = newValue;
-                  updatedWidget.telemetry = { ...w.telemetry, [key]: newValue };
-                  hasUpdate = true;
-                }
-              }
-
-              return hasUpdate ? updatedWidget : w;
-            })
-          );
-        }
-      } catch (err) {
-        console.error("⚠️ WS parse error:", err);
-      }
-    };
-
-    const socket = wsRef.current;
-    socket.addEventListener("message", handleWSMessage);
-    return () => socket.removeEventListener("message", handleWSMessage);
-  }, [dashboard?._id, wsRef, setWidgets]);
-  
-  // 🧭 Fetch widgets on mount and when focused
-  useEffect(() => {
-    mountedRef.current = true;
-    fetchWidgets(); // Initial fetch
-    return () => { mountedRef.current = false; };
-  }, [fetchWidgets]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchWidgets();
-  };
-
-  const handleOpenAddLed = () => {
+  const handleOpenAddLed = useCallback(() => {
     if (!devices || devices.length === 0) {
       setAlertConfig({
         type: 'warning', 
@@ -307,9 +234,9 @@ export default function DashboardScreen({ route, navigation }) {
     setSelectedDeviceId(devices[0]?._id || null);
     setLedLabel("");
     setAddLedModalVisible(true);
-  };
+  }, [devices]);
 
-  const handleCreateLedWidget = async () => {
+  const handleCreateLedWidget = useCallback(async () => {
     if (!selectedDeviceId) {
       setAlertConfig({
         type: 'warning', 
@@ -321,38 +248,30 @@ export default function DashboardScreen({ route, navigation }) {
       return;
     }
     
-    // Prevent duplicate submissions
-    if (creatingLed) {
-      return;
-    }
+    if (creatingLed) return;
     
     try {
       setCreatingLed(true);
-      const response = await axios.post(
-        `${API_BASE}/widgets`,
-        {
-          dashboard_id: dashboard._id,
-          device_id: selectedDeviceId,
-          type: "led",
-          label: ledLabel?.trim() || "LED Control",
-          value: 0,
-        },
-        { 
-          headers: { Authorization: `Bearer ${userToken}` },
-          timeout: 10000, // 10 second timeout
-        }
-      );
-      
-      // Add widget to state immediately for optimistic update
-      if (response.data) {
+      const newWidgetData = await api.addWidget({
+        dashboard_id: dashboard._id,
+        device_id: selectedDeviceId,
+        type: "led",
+        label: ledLabel?.trim() || "LED Control",
+        value: 0,
+      });
+
+      if (newWidgetData) {
         const newWidget = {
-          ...response.data,
-          _id: response.data._id || response.data.id || `temp-led-${Date.now()}`,
+          ...newWidgetData,
+          _id: newWidgetData._id || newWidgetData.id || `temp-led-${Date.now()}`,
           device_token: devices.find((d) => d._id === selectedDeviceId)?.device_token || null,
-          virtual_pin: response.data.config?.virtual_pin,
+          virtual_pin: newWidgetData.config?.virtual_pin,
+          key: (newWidgetData._id || newWidgetData.id || `temp-led-${Date.now()}`).toString(),
+          width: newWidgetData.width || 1,
+          height: newWidgetData.height || 1,
         };
+        
         setWidgets((prev) => {
-          // Check if widget already exists
           const exists = prev.some((w) => String(w._id) === String(newWidget._id));
           if (exists) {
             return prev.map((w) => String(w._id) === String(newWidget._id) ? newWidget : w);
@@ -365,7 +284,6 @@ export default function DashboardScreen({ route, navigation }) {
       setLedLabel("");
       setSelectedDeviceId(null);
       
-      // Optionally refetch to ensure consistency
       setTimeout(() => {
         fetchWidgets();
       }, 500);
@@ -386,7 +304,7 @@ export default function DashboardScreen({ route, navigation }) {
     } finally {
       setCreatingLed(false);
     }
-  };
+  }, [selectedDeviceId, creatingLed, dashboard._id, ledLabel, devices, fetchWidgets, logout]);
 
   const availableDevices = useMemo(
     () => (Array.isArray(devices) ? devices : []),
@@ -394,17 +312,13 @@ export default function DashboardScreen({ route, navigation }) {
   );
 
   useEffect(() => {
-    if (
-      addLedModalVisible &&
-      availableDevices.length > 0 &&
-      !selectedDeviceId
-    ) {
+    if (addLedModalVisible && availableDevices.length > 0 && !selectedDeviceId) {
       setSelectedDeviceId(availableDevices[0]._id);
     }
   }, [addLedModalVisible, availableDevices, selectedDeviceId]);
 
-  // 🗑️ Delete widget - FIXED
-  const handleDeleteWidget = (widgetId) => {
+  // 🗑️ Delete widget
+  const handleDeleteWidget = useCallback((widgetId) => {
     setAlertConfig({
       type: 'confirm',
       title: "Delete Widget",
@@ -417,9 +331,7 @@ export default function DashboardScreen({ route, navigation }) {
           onPress: async () => {
             setAlertVisible(false);
             try {
-              await axios.delete(`${API_BASE}/widgets/${widgetId}`, {
-                headers: { Authorization: `Bearer ${userToken}` },
-              });
+              await api.deleteWidget(widgetId);
               setWidgets((prev) => prev.filter((w) => String(w._id) !== String(widgetId)));
               showToast.success("Widget deleted successfully");
             } catch (err) {
@@ -432,9 +344,9 @@ export default function DashboardScreen({ route, navigation }) {
       ],
     });
     setAlertVisible(true);
-  };
+  }, [logout]);
 
-  const handleWidgetLongPress = (widgetId) => {
+  const handleWidgetLongPress = useCallback((widgetId) => {
     setAlertConfig({
       type: 'confirm',
       title: "Widget Options",
@@ -455,58 +367,54 @@ export default function DashboardScreen({ route, navigation }) {
       ]
     });
     setAlertVisible(true);
-  };
+  }, [handleDeleteWidget]);
 
-  const renderWidget = ({ item }) => {
-    const commonProps = {
-      title: item.label || "Unnamed",
-      value: item.value ?? "--",
-      icon: item.icon || "speedometer-outline",
-    };
-
-    let component;
-    switch (item.type) {
-      case "gauge":
-        component = <GaugeWidget {...commonProps} />;
-        break;
-      case "indicator":
-        component = <IndicatorWidget {...commonProps} />;
-        break;
-      case "led":
-        component = (
-          <LEDControlWidget
-            title={item.label || "LED Control"}
-            widgetId={item._id}
-            deviceId={item.device_id}
-            deviceToken={item.device_token}
-            virtualPin={item.virtual_pin}
-            nextSchedule={item.next_schedule}
-            initialState={!!item.value}
-            onLongPress={() => handleWidgetLongPress(item._id)}
-            onDelete={() => handleDeleteWidget(item._id)}
-          />
-        );
-        break;
-      default:
-        component = <CardWidget {...commonProps} isDarkTheme={isDarkTheme} />;
-        break;
+  const handleSaveLayout = useCallback(async () => {
+    if (!hasChanges) {
+      setEditMode(false);
+      return;
     }
+    try {
+      const layoutData = widgets.map(w => ({
+        id: w._id,
+        width: w.width,
+        height: w.height,
+      }));
+      await api.updateDashboardLayout(dashboard._id, layoutData);
+      showToast.success("Layout saved!");
+      setHasChanges(false);
+      setEditMode(false);
+    } catch (err) {
+      console.error("❌ Save layout error:", err);
+      showToast.error("Failed to save layout.");
+    }
+  }, [hasChanges, widgets, dashboard._id]);
 
-    return (
-      item.type === "led" ? (
-        <View style={styles.widgetItem}>{component}</View>
-      ) : (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          delayLongPress={600}
-          onLongPress={() => handleWidgetLongPress(item._id)}
-          style={styles.widgetItem}
-        >
-          {component}
-        </TouchableOpacity>
+  // 🎯 Handle widget resize
+  const handleResizeWidget = useCallback((widgetId, currentWidth) => {
+    setWidgets(prev =>
+      prev.map(w =>
+        w._id === widgetId
+          ? { ...w, width: currentWidth === 1 ? 2 : 1 }
+          : w
       )
     );
-  };
+    setHasChanges(true);
+  }, []);
+
+  // 🎯 Render widget with memoization
+  const renderWidget = useCallback(({ item }) => {
+    return (
+      <MemoizedWidget
+        item={item}
+        editMode={editMode}
+        isDarkTheme={isDarkTheme}
+        onWidgetLongPress={handleWidgetLongPress}
+        onDeleteWidget={handleDeleteWidget}
+        onResizeWidget={handleResizeWidget}
+      />
+    );
+  }, [editMode, isDarkTheme, handleWidgetLongPress, handleDeleteWidget, handleResizeWidget]);
 
   if (loading) {
     return (
@@ -519,7 +427,7 @@ export default function DashboardScreen({ route, navigation }) {
 
   return (
     <LinearGradient colors={themeStyles.gradient} style={styles.container}>
-      <View style={[styles.header, themeStyles.header]}>
+      <View style={[styles.header, themeStyles.header, { paddingTop: insets.top + 10 }]}>
         <View>
           <Text style={[styles.title, themeStyles.title]}>{dashboard?.name || "Dashboard"}</Text>
           <Text style={[styles.subtitle, themeStyles.subtitle]}>
@@ -527,13 +435,26 @@ export default function DashboardScreen({ route, navigation }) {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerActionBtn}
-            onPress={handleOpenAddLed}
+          {editMode ? (
+            <TouchableOpacity style={styles.headerActionBtn} onPress={handleSaveLayout}>
+              <Ionicons name="save-outline" size={22} color="#0369a1" />
+              <Text style={[styles.headerActionText, hasChanges && {fontWeight: 'bold'}]}>
+                {hasChanges ? "Save Layout" : "Done"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.headerActionBtn} onPress={handleOpenAddLed}>
+              <Ionicons name="bulb-outline" size={22} color="#0369a1" />
+              <Text style={styles.headerActionText}>Add LED</Text>
+            </TouchableOpacity>
+          )}
+
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => setEditMode(!editMode)}
           >
-            <Ionicons name="bulb-outline" size={22} color="#007AFF" />
-            <Text style={styles.headerActionText}>Add LED</Text>
-          </TouchableOpacity>
+            <Ionicons name={editMode ? "close-circle" : "create-outline"} size={26} color={editMode ? "#ff3b30" : "#007AFF"} />
+          </Pressable>
           <TouchableOpacity
             style={styles.headerIconBtn}
             onPress={handleDeleteDashboard}
@@ -544,29 +465,38 @@ export default function DashboardScreen({ route, navigation }) {
       </View>
 
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
-        <FlatList
-          data={widgets}
-          renderItem={renderWidget}
-          keyExtractor={(item) => item._id}
-          numColumns={2}
-          contentContainerStyle={styles.widgetGrid}
-          columnWrapperStyle={styles.row}
+        <ScrollView
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#007AFF"]}
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor={isDarkTheme ? "#FFFFFF" : "#000000"} 
             />
           }
-          ListEmptyComponent={() => (
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
+          {widgets.length > 0 ? (
+            <DraggableGrid
+              numColumns={2}
+              data={widgets}
+              renderItem={(item) => (
+                <View style={{ flex: 1 }}>
+                  {renderWidget({ item })}
+                </View>
+              )}
+              onDragRelease={(data) => {
+                setWidgets(data);
+                setHasChanges(true);
+              }}
+              itemHeight={150}
+            />
+          ) : (
             <View style={styles.emptyContainer}>
               <Ionicons name="bulb-outline" size={50} color="#666" />
-              <Text style={styles.placeholder}>
-                No widgets yet. Add one from the dashboard editor.
-              </Text>
+              <Text style={styles.placeholder}>No widgets yet. Tap the bulb icon to add one.</Text>
             </View>
           )}
-        />
+        </ScrollView>
       </Animated.View>
 
       <Modal
@@ -591,7 +521,7 @@ export default function DashboardScreen({ route, navigation }) {
                     key={device._id}
                     style={[
                       styles.deviceRow,
-                      themeStyles.deviceRow, // Keep theme style
+                      themeStyles.deviceRow,
                       isSelected && styles.deviceRowSelected,
                     ]}
                     onPress={() => setSelectedDeviceId(device._id)}
@@ -616,6 +546,7 @@ export default function DashboardScreen({ route, navigation }) {
             <TextInput
               style={[styles.input, themeStyles.input]}
               placeholder="Living room LED"
+              placeholderTextColor={isDarkTheme ? "#888" : "#999"}
               value={ledLabel}
               onChangeText={setLedLabel}
             />
@@ -650,24 +581,43 @@ export default function DashboardScreen({ route, navigation }) {
   );
 }
 
+const DashboardScreen = ({ route, navigation }) => {
+  const { dashboard } = route.params || {};
+  if (!dashboard?._id) return null; // Or return an error screen
+
+  return (
+    <DashboardProvider dashboardId={dashboard._id}>
+      <DashboardContent route={route} navigation={navigation} />
+    </DashboardProvider>
+  );
+};
+
+// 🎯 Export with memo to prevent unnecessary re-renders from parent
+export default memo(DashboardScreen, (prevProps, nextProps) => {
+  // Only re-render if dashboard ID changes
+  return prevProps.route.params?.dashboard?._id === nextProps.route.params?.dashboard?._id;
+});
+
 // 💅 Styles
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 20,
     backgroundColor: "#ffffffcc",
     elevation: 6,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
   },
-  title: { fontSize: 24, fontWeight: "bold", color: "#111" },
+  title: { fontSize: moderateScale(26), fontWeight: "bold", color: "#111" },
   subtitle: { fontSize: 14, color: "#555", marginTop: 4 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerActions: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: 'space-between', 
+    marginTop: 8, 
+    gap: 12 
+  },
   headerActionBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -679,13 +629,12 @@ const styles = StyleSheet.create({
   headerActionText: {
     marginLeft: 6,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "500",
     color: "#0369a1",
   },
   headerIconBtn: { padding: 6 },
-  widgetGrid: { padding: 12, paddingBottom: 60 },
-  row: { justifyContent: "space-around" },
-  widgetItem: { margin: 8 },
+  widgetWrapper: { height: 150, padding: 6 },
+  widgetWrapperLarge: { width: '100%' },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -701,6 +650,35 @@ const styles = StyleSheet.create({
   },
   loader: { marginTop: 80 },
   loadingText: { color: "#666", textAlign: "center", marginTop: 10 },
+  editOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resizeHandle: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 122, 255, 0.8)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteHandle: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.8)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",

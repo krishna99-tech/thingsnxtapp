@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 import { Ionicons } from '@expo/vector-icons';
+import CustomAlert from '../components/CustomAlert';
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 
 const PasswordRequirement = ({ met, text }) => (
     <View style={styles.requirementContainer}>
@@ -29,6 +31,9 @@ export default function ResetPasswordScreen({ navigation, route }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
+  const { isDarkTheme } = useContext(AuthContext);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordValidation, setPasswordValidation] = useState({
     length: false,
@@ -56,44 +61,58 @@ export default function ResetPasswordScreen({ navigation, route }) {
 
   const handleResetPassword = async () => {
     if (!token.trim()) {
-      Alert.alert('Error', 'Please enter the reset code sent to your email.');
+      setAlertConfig({ type: 'error', title: 'Error', message: 'Please enter the reset code sent to your email.', buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }] });
+      setAlertVisible(true);
       return;
     }
     if (!password) {
-      Alert.alert('Error', 'Please enter your new password.');
+      setAlertConfig({ type: 'error', title: 'Error', message: 'Please enter your new password.', buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }] });
+      setAlertVisible(true);
       return;
     }
     if (!isPasswordValid) {
-      Alert.alert(
-        'Error',
-        'Password does not meet all the requirements.'
-      );
+      setAlertConfig({ type: 'error', title: 'Error', message: 'Password does not meet all the requirements.', buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }] });
+      setAlertVisible(true);
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
+      setAlertConfig({ type: 'error', title: 'Error', message: 'Passwords do not match.', buttons: [{ text: 'OK', onPress: () => setAlertVisible(false) }] });
+      setAlertVisible(true);
       return;
     }
 
     setLoading(true);
     try {
       await api.resetPassword(token.trim().toUpperCase(), password);
+      setAlertConfig({
+        type: 'success',
+        title: 'Success 🎉',
+        message: 'Your password has been successfully reset. You can now login with your new password.',
+        buttons: [
+            {
+                text: 'Go to Login',
+                onPress: () => {
+                    setAlertVisible(false);
+                    navigation.navigate('Login');
+                },
+            },
+        ],
+      });
+      setAlertVisible(true);
 
-      Alert.alert(
-        'Success 🎉',
-        'Your password has been successfully reset. You can now login with your new password.',
-        [
-          {
-            text: 'Go to Login',
-            onPress: () => navigation.navigate('Login'),
-          },
-        ]
-      );
     } catch (error) {
-      Alert.alert(
-        'Reset Failed',
-        error.message || 'Invalid or expired code. Please try again.'
-      );
+      setAlertConfig({
+        type: 'error',
+        title: 'Reset Failed',
+        message: error.message || 'Invalid or expired code. Please try again.',
+        buttons: [
+            {
+                text: 'OK',
+                onPress: () => setAlertVisible(false),
+            },
+        ],
+      });
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
@@ -241,6 +260,11 @@ export default function ResetPasswordScreen({ navigation, route }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </SafeAreaView>
   );
 }

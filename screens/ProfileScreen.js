@@ -1,8 +1,8 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
-import { User, Mail, Edit, Save, X } from 'lucide-react-native';
-import { showToast } from '../components/Toast';
+import { User, Mail, Edit, Save, X, AlertTriangle } from 'lucide-react-native';
+import CustomAlert from '../components/CustomAlert';
 
 const ProfileInfoRow = ({ icon, label, value, Colors, isEditing, onChangeText, placeholder }) => (
   <View style={[styles.infoRow, { borderBottomColor: Colors.border }]}>
@@ -30,6 +30,8 @@ export default function ProfileScreen({ navigation }) {
   const [editedUsername, setEditedUsername] = useState(username || "");
   const [editedEmail, setEditedEmail] = useState(email || "");
   const [isSaving, setIsSaving] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   useEffect(() => {
     // Reset fields if user context changes
@@ -57,11 +59,23 @@ export default function ProfileScreen({ navigation }) {
 
       if (Object.keys(userData).length > 0) {
         await updateUser(userData);
-        showToast.success("Profile Updated", "Your changes have been saved.");
+        setAlertConfig({
+          type: 'success',
+          title: "Profile Updated",
+          message: "Your changes have been saved.",
+          buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+        });
+        setAlertVisible(true);
       }
       setIsEditing(false);
     } catch (error) {
-      showToast.error("Update Failed", error.message);
+      setAlertConfig({
+        type: 'error',
+        title: "Update Failed",
+        message: error.message,
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     } finally {
       setIsSaving(false);
     }
@@ -128,6 +142,12 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
       )}
+
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </ScrollView>
   );
 }

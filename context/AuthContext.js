@@ -7,9 +7,11 @@ import React, {
   useCallback,
 } from "react";
 import { View, ActivityIndicator } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL, WS_URL } from "../constants/config";
 import API from "../services/api";
+import { showToast } from "../components/Toast";
 
 export const AuthContext = createContext(null);
 
@@ -30,7 +32,6 @@ export const AuthProvider = ({ children }) => {
   const [username, setUsername] = useState(null);
   const [email, setEmail] = useState(null);
   const [devices, setDevices] = useState([]);
-  const [widgets, setWidgets] = useState([]);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -39,6 +40,7 @@ export const AuthProvider = ({ children }) => {
   const sseAbortController = useRef(null); // For aborting SSE fetch
   const isReconnecting = useRef(true); // Flag to control WS reconnection
   
+  const messageListeners = useRef(new Set());
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
@@ -83,6 +85,15 @@ export const AuthProvider = ({ children }) => {
     });
     setAlertVisible(true);
   };
+  // ====================================
+  // 📡 REAL-TIME MESSAGE SUBSCRIPTION
+  // ====================================
+  const subscribeToMessages = useCallback((callback) => {
+    messageListeners.current.add(callback);
+    return () => messageListeners.current.delete(callback); // Return an unsubscribe function
+  }, []);
+
+
   // ====================================
   // 🔄 PERIODIC DEVICE REFRESH (DISABLED - Using real-time updates only)
   // ====================================
@@ -204,8 +215,8 @@ export const AuthProvider = ({ children }) => {
       setUsername(null);
       setEmail(null);
       setDevices([]);
-      setWidgets([]);
     };
+    wsRef.current = null;
   };
 
   // ====================================
@@ -704,9 +715,21 @@ export const AuthProvider = ({ children }) => {
       // Silently ignore ping/pong messages
     } 
     // Log other message types for debugging
+    // Handle new notifications
+    else if (m.type === "notification" && m.notification) {
+      const { title, message } = m.notification;
+      showToast.info(title, message, {
+        isDarkTheme: isDarkTheme,
+      });
+    }
     else {
       console.log("[CTX] 📨 Received unhandled message type:", m.type, m);
     }
+  };
+  
+  // This function will be called by the WebSocket onmessage handler
+  const broadcastMessage = (msg) => {
+    messageListeners.current.forEach(listener => listener(msg));
   };
 
   // ====================================
@@ -766,7 +789,8 @@ const connectWebSocket = (token) => {
         dataKeys: msg.data ? Object.keys(msg.data) : []
       });
       
-      handleRealtimeMessage(msg);
+      handleRealtimeMessage(msg); // Handle in AuthContext
+      broadcastMessage(msg);      // Broadcast to other listeners (like DashboardContext)
     } catch (err) {
       // Log the raw data for debugging if JSON parsing fails
       console.error("❌ WebSocket JSON parse error:", err.message);
@@ -786,8 +810,18 @@ const connectWebSocket = (token) => {
 
     if (isReconnecting.current && !isIntentionalClosure) {
       setTimeout(() => {
-        console.log("🔄 Reconnecting WebSocket...");
-        connectWebSocket(token);
+        console.log("🔄 Attempting to reconnect WebSocket...");
+        // Before reconnecting, try to get a fresh token.
+        // The `userToken` state variable is the most up-to-date token.
+        AsyncStorage.getItem("userToken").then(freshToken => {
+          if (freshToken) {
+            console.log("Reconnecting with fresh token.");
+            connectWebSocket(freshToken);
+          } else {
+            console.warn("No token found for WebSocket reconnect. Aborting.");
+            logout(); // If no token, log out to be safe.
+          }
+        });
       }, 5000);
     }
   };
@@ -828,39 +862,40 @@ const connectWebSocket = (token) => {
 
 
   return (
-    <AuthContext.Provider
-      value={{
-        userToken,
-        username,
-        email,
-        devices,
-        widgets,
-        setWidgets,
-        addDevice,
-        updateDevice,
-        deleteDevice,
-        fetchDevices,
-        updateUser,
-        handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
-        fetchTelemetry,
-        connectWebSocket,
-        connectSSE,
-        login,
-        signup,
-        logout,
-        isDarkTheme,
-        toggleTheme, // Use the new function
-        loading,
-        isRefreshing,
-        lastUpdated,
-        wsRef,
-        alertVisible,
-        alertConfig,
-        showAlert,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <SafeAreaProvider>
+      <AuthContext.Provider
+        value={{
+          userToken,
+          username,
+          email,
+          devices,
+          addDevice,
+          updateDevice,
+          deleteDevice,
+          fetchDevices,
+          updateUser,
+          handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
+          fetchTelemetry,
+          connectWebSocket,
+          connectSSE,
+          login,
+          signup,
+          logout,
+          isDarkTheme,
+          toggleTheme, // Use the new function
+          loading,
+          isRefreshing,
+          lastUpdated,
+          wsRef,
+          alertVisible,
+          subscribeToMessages,
+          alertConfig,
+          showAlert,
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    </SafeAreaProvider>
   );
 };
   

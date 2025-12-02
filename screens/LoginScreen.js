@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import CustomAlert from "../components/CustomAlert";
 
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState(""); // email or username
@@ -23,12 +23,21 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
+  const { isDarkTheme } = useAuth();
   const navigation = useNavigation();
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   // Handle Login
   const handleLogin = async () => {
     if (!identifier.trim() || !password) {
-      Alert.alert("Missing Fields", "Please enter your email/username and password.");
+      setAlertConfig({
+        type: 'warning',
+        title: "Missing Fields",
+        message: "Please enter your email/username and password.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
       return;
     }
     setLoading(true);
@@ -135,6 +144,11 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </SafeAreaView>
   );
 }

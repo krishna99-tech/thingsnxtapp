@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -13,10 +12,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../services/api"; // Replace with your actual api import
+import CustomAlert from "../components/CustomAlert";
+import { AuthContext } from "../context/AuthContext";
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
+  const { isDarkTheme } = useContext(AuthContext);
 
   // Validate email format
   const validateEmail = (email) =>
@@ -24,15 +28,24 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      Alert.alert(
-        "Missing Email",
-        "Please enter your registered email address."
-      );
+      setAlertConfig({
+        type: 'warning',
+        title: "Missing Email",
+        message: "Please enter your registered email address.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
       return;
     }
 
     if (!validateEmail(email)) {
-      Alert.alert("Invalid Email", "Please enter a valid email address.");
+      setAlertConfig({
+        type: 'warning',
+        title: "Invalid Email",
+        message: "Please enter a valid email address.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
       return;
     }
 
@@ -41,25 +54,30 @@ export default function ForgotPasswordScreen({ navigation }) {
       // Only pass email string
       await api.forgotPassword(email.toLowerCase().trim());
 
-      Alert.alert(
-        "Email Sent",
-        "If your email is registered, a password reset link or code has been sent. Please check your inbox (and spam folder).",
-        [
-          {
-            text: "Continue",
-            onPress: () =>
-              navigation.navigate("ResetPassword", {
-                email: email.toLowerCase().trim(),
-              }),
-          },
-        ]
-      );
+      setAlertConfig({
+        type: 'success',
+        title: "Email Sent",
+        message: "If your email is registered, a password reset code has been sent. Please check your inbox (and spam folder).",
+        buttons: [{
+          text: "Continue",
+          onPress: () => {
+            setAlertVisible(false);
+            navigation.navigate("ResetPassword", {
+              email: email.toLowerCase().trim(),
+            });
+          }
+        }],
+      });
+      setAlertVisible(true);
     } catch (error) {
       console.error("Forgot password error:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Unable to send reset email. Try again later."
-      );
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: error.message || "Unable to send reset email. Try again later.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
@@ -145,6 +163,12 @@ export default function ForgotPasswordScreen({ navigation }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </SafeAreaView>
   );
 }

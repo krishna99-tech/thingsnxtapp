@@ -9,23 +9,21 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
-  Alert,
   Platform,
   UIManager,
   LayoutAnimation,
   Animated,
+  KeyboardAvoidingView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthContext } from "../context/AuthContext";
-import axios from "axios";
-import Toast from "../components/Toast"; // 🟢 Import Toast
-import { BASE_URL } from "../constants/config";
+import api from "../services/api";
 import { showToast } from "../components/Toast";
+import CustomAlert from "../components/CustomAlert";
 import { formatDate } from "../utils/format";
-
-console.log("Backend:", BASE_URL);
 
 // 🟢 Enable layout animation for Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -34,7 +32,7 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 // 🔹 Animated Card Component (Moved outside for better structure)
 const DashboardCard = React.memo(({ item, onPress }) => {
-  const scale = new Animated.Value(1);
+  const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () =>
     Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
@@ -75,7 +73,7 @@ const DashboardCard = React.memo(({ item, onPress }) => {
 
 export default function MainDashboardScreen() {
   // *** MAIN FIX: use userToken from context! ***
-  const { userToken, isDarkTheme } = useContext(AuthContext);
+  const { userToken, isDarkTheme, logout } = useContext(AuthContext);
   const navigation = useNavigation();
 
   const [dashboards, setDashboards] = useState([]);
@@ -83,8 +81,26 @@ export default function MainDashboardScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [toast, setToast] = useState({ visible: false, message: "" });
-  
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
+  const slideAnim = useRef(new Animated.Value(300)).current;
+  const insets = useSafeAreaInsets();
+
+  // Animate modal slide-in/out
+  useEffect(() => {
+    if (modalVisible) {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: 300,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [modalVisible]);
 
   // Theme-based styles
   const themeStyles = {
@@ -97,25 +113,40 @@ export default function MainDashboardScreen() {
     modalTitle: {
       color: isDarkTheme ? "#FFFFFF" : "#222",
     },
-    input: { color: isDarkTheme ? "#FFFFFF" : "#111", backgroundColor: isDarkTheme ? "#1E1E1E" : "#fafafa", borderColor: isDarkTheme ? "#444" : "#ddd" },
+    input: { 
+      color: isDarkTheme ? "#FFFFFF" : "#111", 
+      backgroundColor: isDarkTheme ? "#1F2937" : "#F3F4F6", 
+      borderColor: isDarkTheme ? "#4B5563" : "#D1D5DB" 
+    },
+    modalLabel: { color: isDarkTheme ? "#E5E7EB" : "#374151" },
   };
 
   // 🔹 Fetch dashboards
   const fetchDashboards = async () => {
     if (!userToken) {
-      showToast("Please login again.", "error");
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Please login again.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
       return;
     }
     try {
       setLoading(true);
-      const res = await axios.get(`${BASE_URL}/dashboards`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
+      const data = await api.getDashboards();
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setDashboards(res.data || []);
+      setDashboards(data || []);
     } catch (err) {
       console.error("Dashboard fetch error:", err.response?.data || err.message);
-      showToast("Could not load dashboards.", "error");
+      if (err.response?.status === 401) logout();
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Could not load dashboards.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
@@ -132,21 +163,29 @@ export default function MainDashboardScreen() {
   // 🔹 Add new dashboard
   const addDashboard = async () => {
     if (!newName.trim()) {
-      showToast("Please enter a dashboard name.", "error");
+      setAlertConfig({
+        type: 'warning',
+        title: "Missing Name",
+        message: "Please enter a dashboard name.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
       return;
     }
     if (!userToken) {
-      showToast("Cannot add dashboard. Please login again.", "error");
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Cannot add dashboard. Please login again.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
       return;
     }
     try {
-      const res = await axios.post(
-        `${BASE_URL}/dashboards`,
-        { name: newName, description: newDescription },
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      const newDashboard = await api.addDashboard({ name: newName, description: newDescription });
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setDashboards((prev) => [...prev, res.data]);
+      setDashboards((prev) => [...prev, newDashboard]);
       setModalVisible(false);
       setNewName("");
       setNewDescription("");
@@ -158,7 +197,13 @@ export default function MainDashboardScreen() {
         msg = err.response.data.detail;
       }
       console.error("Add dashboard error:", err.response?.data || err.message);
-      showToast(msg, "error");
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: msg,
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -176,7 +221,7 @@ export default function MainDashboardScreen() {
       }
       style={styles.container}>
     {/* 🌈 Gradient Header */}
-    <LinearGradient colors={isDarkTheme ? ["#2C5364", "#203A43", "#0F2027"] : ["#FF6347", "#FF8264"]} style={styles.header}>
+    <LinearGradient colors={isDarkTheme ? ["#2C5364", "#203A43", "#0F2027"] : ["#FF6347", "#FF8264"]} style={[styles.header, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.title}>My Dashboards</Text>
       <TouchableOpacity onPress={() => setModalVisible(true)}>
         <Ionicons name="add-circle" size={36} color="#fff" />
@@ -212,56 +257,56 @@ export default function MainDashboardScreen() {
     )}
 
     {/* 🪟 Create Dashboard Modal */}
-    <Modal visible={modalVisible} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
-        <Animated.View style={[styles.modalView, themeStyles.modalView]}>
-          <Text style={[styles.modalTitle, themeStyles.modalTitle]}>Create Dashboard</Text>
+    <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} />
+        <Animated.View style={[styles.modalView, themeStyles.modalView, { transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.grabber} />
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, themeStyles.modalTitle]}>New Dashboard</Text>
+            <Text style={styles.modalSubtitle}>Organize your devices into a new dashboard.</Text>
+          </View>
 
-          {/* 📝 Inputs */}
-          <TextInput
-            style={[styles.input, themeStyles.input]}
-            placeholder="Dashboard Name"
-            placeholderTextColor="#888"
-            value={newName}
-            onChangeText={setNewName}
-          />
-          <TextInput
-            style={[styles.input, { height: 80 }, themeStyles.input]}
-            placeholder="Description (optional)"
-            placeholderTextColor="#888"
-            value={newDescription}
-            onChangeText={setNewDescription}
-            multiline
-          />
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, themeStyles.modalLabel]}>Dashboard Name</Text>
+            <TextInput
+              style={[styles.input, themeStyles.input]}
+              placeholder="e.g., Living Room"
+              placeholderTextColor="#9CA3AF"
+              value={newName}
+              onChangeText={setNewName}
+            />
+          </View>
 
-          {/* 🎛️ Buttons */}
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, themeStyles.modalLabel]}>Description (Optional)</Text>
+            <TextInput
+              style={[styles.input, { height: 80, paddingTop: 12 }, themeStyles.input]}
+              placeholder="A short description of this dashboard"
+              placeholderTextColor="#9CA3AF"
+              value={newDescription}
+              onChangeText={setNewDescription}
+              multiline
+            />
+          </View>
+
           <View style={styles.modalButtons}>
-            <Pressable
-              style={styles.cancelBtn}
-              onPress={() => setModalVisible(false)}
-            >
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
               <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-
-            <Pressable style={styles.addBtn} onPress={addDashboard}>
-              <LinearGradient
-                colors={["#FF6347", "#FF8264"]}
-                style={styles.addBtnGradient}
-              >
-                <Text style={styles.addText}>Add</Text>
-              </LinearGradient>
-            </Pressable>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={addDashboard}>
+              <Text style={styles.addText}>Create Dashboard</Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
 
-    <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={() => setToast({ ...toast, visible: false })}
-    />
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </LinearGradient>
   );
 }
@@ -271,7 +316,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, marginBottom: 50 },
 
   header: {
-    paddingTop: 60,
     paddingHorizontal: 20,
     paddingBottom: 20,
     flexDirection: "row",
@@ -295,6 +339,7 @@ const styles = StyleSheet.create({
   gradientCard: {
     borderRadius: 14,
     padding: 16,
+    minHeight: 120, // Ensures a minimum height for better visual balance
   },
   cardHeader: {
     flexDirection: "row",
@@ -313,43 +358,74 @@ const styles = StyleSheet.create({
   },
   modalView: {
     width: "90%",
-    backgroundColor: "#fff",
     padding: 22,
     borderRadius: 18,
     elevation: 6,
+    paddingTop: 12,
+  },
+  grabber: {
+    width: 40,
+    height: 5,
+    backgroundColor: '#D1D5DB',
+    borderRadius: 2.5,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "bold",
-    color: "#222",
-    textAlign: "center",
-    marginBottom: 12,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 12,
-    backgroundColor: "#fafafa",
-    color: "#111",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 20,
+    marginTop: 24,
+    gap: 12,
   },
   cancelBtn: {
-    marginRight: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
   },
-  cancelText: { color: "#888", fontSize: 16 },
-  addBtn: { borderRadius: 10, overflow: "hidden" },
-  addBtnGradient: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 10,
+  cancelText: { 
+    color: "#374151", 
+    fontSize: 16,
+    fontWeight: '600',
   },
-  addText: { color: "#fff", fontWeight: "bold", fontSize: 16, textAlign: "center" },
+  addBtn: { 
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#FF6347',
+    alignItems: 'center',
+  },
+  addText: { 
+    color: "#fff", 
+    fontWeight: "bold", 
+    fontSize: 16, 
+  },
 });

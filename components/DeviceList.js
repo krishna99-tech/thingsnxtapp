@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   StyleSheet,
+  RefreshControl,
 } from "react-native";
 import DeviceCard from "./DeviceCard";
 
@@ -42,8 +43,12 @@ export const DeviceList = ({
       )}
       keyExtractor={(item) => String(item.id || item._id)}
       ListEmptyComponent={EmptyListComponent}
-      onRefresh={onRefresh}
-      refreshing={refreshing}   // <-- FIXED HERE
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
+      }
     />
   );
 };

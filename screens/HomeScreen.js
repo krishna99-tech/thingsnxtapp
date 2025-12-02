@@ -14,7 +14,6 @@ import {
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
-import axios from "axios";
 import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
 import {
@@ -36,6 +35,8 @@ import {
 import { Lightbulb, Thermometer } from "lucide-react-native";
 import StatCard from "../components/home/StatCard";
 import HomeSection from "../components/home/HomeSection";
+import api from "../services/api";
+import { moderateScale } from "../utils/scaling";
 
 // 📱 Responsive scaling based on device width
 const { width, height } = Dimensions.get("window");
@@ -106,7 +107,7 @@ const getDashboardGradient = (type, Colors) => {
   }
 };
 
-const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress }) => (
+const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress, unreadCount }) => (
   <LinearGradient
     colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
     style={styles.header}
@@ -121,6 +122,11 @@ const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress }) => (
         onPress={onNotificationPress}
       >
         <Bell size={24} color={Colors.white} />
+        {unreadCount > 0 && (
+          <View style={[styles.notificationBadge, { backgroundColor: Colors.danger }]}>
+            <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </View>
   </LinearGradient>
@@ -274,12 +280,14 @@ export default function HomeScreen() {
     if (!userToken) return;
     setDashboardsLoading(true);
     try {
-      // Fetch Dashboards
-      const dashboardsRes = await axios.get(`${API_BASE}/dashboards`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
-      setDashboards(dashboardsRes.data || []);
+      // Fetch in parallel
+      const [dashboardsData, notificationsData] = await Promise.all([
+        api.getDashboards(),
+        api.getNotifications({ limit: 100, read: false }) // Fetch only unread notifications
+      ]);
 
+      setDashboards(dashboardsData || []);
+      setUnreadNotifications(notificationsData?.notifications?.length || 0);
     } catch (err) {
       console.error("Home Screen fetch error:", err.response?.data || err.message);
       if (err.response?.status === 401) logout();
@@ -317,7 +325,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]}>
-      <HomeHeader username={username} isDarkTheme={isDarkTheme} Colors={Colors} onNotificationPress={() => navigation.navigate('Notifications')} />
+      <HomeHeader
+        username={username}
+        isDarkTheme={isDarkTheme}
+        Colors={Colors}
+        onNotificationPress={() => navigation.navigate('Notifications')}
+        unreadCount={unreadNotifications}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -430,11 +444,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   greeting: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     marginBottom: 4,
   },
   title: {
-    fontSize: 28,
+    fontSize: moderateScale(28, 0.3),
     fontWeight: "700",
   },
   notificationButton: {
@@ -470,6 +484,7 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: "row",
     paddingHorizontal: CARD_PADDING,
+    flexWrap: "wrap",
     paddingTop: 20,
     gap: CARD_GAP,
   },
@@ -502,12 +517,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   deviceName: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: "600",
     marginBottom: 4,
   },
   deviceRoom: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     marginBottom: 12,
   },
   deviceValue: {
@@ -517,7 +532,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   deviceValueText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontWeight: "600",
   },
   deviceStatus: {
@@ -527,7 +542,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   deviceStatusText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontWeight: "600",
   },
   chartCard: {
@@ -542,10 +557,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   chartTitle: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
   },
   chartValue: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: '700',
   },
   chart: {
@@ -571,7 +586,7 @@ const styles = StyleSheet.create({
     minHeight: 4,
   },
   chartLabel: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     marginTop: 8,
   },
   dashboardsScroll: {
@@ -602,21 +617,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dashboardName: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: '700',
     color: "#FFFFFF",
   },
   dashboardValue: {
-    fontSize: 32,
+    fontSize: moderateScale(32, 0.3),
     fontWeight: '700',
     color: "#FFFFFF",
   },
   dashboardUnit: {
-    fontSize: 20,
+    fontSize: moderateScale(20, 0.3),
     fontWeight: '600',
   },
   dashboardLabel: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     color: "#FFFFFF",
     opacity: 0.9,
   },

@@ -10,14 +10,14 @@ import {
   Modal,
   FlatList,
   Pressable,
-  ActivityIndicator,
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import CustomAlert from "../components/CustomAlert";
 import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
-import axios from "axios";
+import * as Clipboard from "expo-clipboard";
+import { ActivityIndicator } from "react-native";
 import {
   Wifi,
   AlertTriangle,
@@ -33,8 +33,11 @@ import {
   Lightbulb,
   Flame,
   Zap,
+  Copy,
 } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
+import api from "../services/api";
+import { moderateScale } from "../utils/scaling";
 
 const COLORS = {
   background: "#0A0E27",
@@ -147,6 +150,11 @@ export default function DeviceDetailScreen({ route, navigation }) {
     );
   }
 
+  const handleCopyToken = async () => {
+    await Clipboard.setStringAsync(device.device_token);
+    showToast.success("Token copied to clipboard!");
+  };
+
   const handleDeleteDevice = () => {
     setAlertConfig({
       type: 'confirm',
@@ -198,10 +206,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
       return;
     }
     try {
-      const res = await axios.get(`${API_BASE}/dashboards`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
-      setDashboards(res.data);
+      const data = await api.getDashboards();
+      setDashboards(data);
     } catch (err) {
       console.error(err);
       setAlertConfig({
@@ -231,31 +237,28 @@ export default function DeviceDetailScreen({ route, navigation }) {
     setIsSubmitting(true);
 
     try {
-      const { label, value } = selectedSensor;
+      // Store label before resetting state
+      const widgetLabel = selectedSensor?.label;
 
       const payload = {
         dashboard_id: dashboardId,
         device_id: device._id,
-        type: selectedWidgetType,
-        label: label,
-        config: { key: selectedSensor.id }, // Use sensor ID as the key
+        type: selectedWidgetType,        label: widgetLabel,
+        config: { key: selectedSensor.id },
       };
 
       if (selectedWidgetType === "led") {
-        payload.value = value ? 1 : 0;
+        payload.value = selectedSensor.value ? 1 : 0;
       } else {
-        payload.value = value;
+        payload.value = selectedSensor.value;
       }
 
-      await axios.post(`${API_BASE}/widgets`, payload, {
-        headers: { Authorization: `Bearer ${userToken}` },
-        timeout: 10000,
-      });
+      await api.addWidget(payload);
 
       setDashboardModalVisible(false);
       setSelectedSensor(null);
       setSelectedWidgetType(null);
-      showToast.success(`Widget '${label}' added to dashboard`);
+      showToast.success(`Widget '${widgetLabel || 'Sensor'}' added to dashboard`);
     } catch (err) {
       console.error("Export to dashboard error:", err);
 
@@ -350,8 +353,13 @@ export default function DeviceDetailScreen({ route, navigation }) {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Access Token</Text>
           </View>
-          <View style={styles.tokenCard}>
-            <Text selectable style={styles.tokenText}>{device.device_token}</Text>
+          <View style={[styles.tokenCard, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <Text selectable style={styles.tokenText} numberOfLines={1} ellipsizeMode="middle">
+              {device.device_token}
+            </Text>
+            <TouchableOpacity onPress={handleCopyToken} style={{ padding: 8, marginLeft: 8, backgroundColor: `${COLORS.primary}20`, borderRadius: 8 }}>
+              <Copy size={18} color={COLORS.primary} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -402,7 +410,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
             <Text style={styles.modalTitle}>Add Widget for:</Text>
             <Text style={styles.modalSub}>{selectedSensor?.label}</Text>
             <View style={styles.widgetOptions}>
-              {["card", "gauge", "indicator"].map((type) => (
+              {["card", "gauge", "indicator", "chart"].map((type) => (
                 <Pressable
                   key={type}
                   style={styles.widgetOption}
@@ -414,6 +422,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
                         ? "speedometer-outline"
                         : type === "indicator"
                         ? "radio-button-on-outline"
+                        : type === "chart"
+                        ? "analytics-outline"
                         : "albums-outline"
                     }
                     size={22}
@@ -532,11 +542,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontWeight: "600",
   },
   deviceType: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "500",
     color: COLORS.textSecondary,
   },
@@ -555,11 +565,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   infoLabel: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: COLORS.textSecondary,
   },
   infoValue: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: "600",
     color: COLORS.text,
   },
@@ -571,7 +581,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: "600",
     color: COLORS.text,
   },
@@ -582,23 +592,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
-  tokenText: {
-    fontSize: 14,
-    fontFamily: Platform.select({ ios: "Courier", android: "monospace" }),
-    color: COLORS.primary,
-  },
-  sensorsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
   sensorCard: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    width: "48%",
+    width: "48.5%", // Adjusted for better spacing in a 2-column layout
     gap: 8,
   },
   sensorIconContainer: {
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sensorLabel: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontWeight: "500",
     color: COLORS.text,
   },
@@ -621,16 +621,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   sensorValue: {
-    fontSize: 28,
+    fontSize: moderateScale(28, 0.3),
     fontWeight: "700",
     color: COLORS.primary,
   },
   sensorUnit: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: COLORS.textSecondary,
   },
   sensorTimestamp: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     color: COLORS.textSecondary,
   },
   emptyState: {
@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyStateText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: COLORS.textSecondary,
   },
   refreshButton: {
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   errorTitle: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: "600",
     color: COLORS.text,
   },
@@ -674,28 +674,26 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   backButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
     color: COLORS.background,
   },
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
   modalView: { width: "85%", backgroundColor: "#1F2937", borderRadius: 16, padding: 20, elevation: 6 },
-  modalTitle: { fontSize: 20, fontWeight: "bold", color: '#FFF', marginBottom: 10, textAlign: 'center' },
-  modalSub: { color: "#D1D5DB", marginBottom: 12, textAlign: "center", fontSize: 16 },
+  modalTitle: { fontSize: moderateScale(20), fontWeight: "bold", color: '#FFF', marginBottom: 10, textAlign: 'center' },
+  modalSub: { color: "#D1D5DB", marginBottom: 12, textAlign: "center", fontSize: moderateScale(16) },
   widgetOptions: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    alignItems: "center",
     marginVertical: 10,
   },
   widgetOption: {
     width: "40%",
     margin: 8,
     paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: "#374151",
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -712,18 +710,29 @@ const styles = StyleSheet.create({
   },
   dashboardName: {
     fontWeight: "bold",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     color: '#FFF'
   },
   dashboardDesc: {
     color: "#9CA3AF",
-    fontSize: 14
+    fontSize: moderateScale(14)
   },
   cancelText: {
     color: "#00D9FF",
     textAlign: "center",
     marginTop: 10,
-    fontSize: 16,
+    fontSize: moderateScale(16),
     padding: 8
+  },
+  tokenText: {
+    flex: 1, // Allow text to take available space
+    fontSize: moderateScale(14),
+    fontFamily: Platform.select({ ios: "Courier", android: "monospace" }),
+    color: COLORS.primary,
+  },
+  sensorsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
   },
 });

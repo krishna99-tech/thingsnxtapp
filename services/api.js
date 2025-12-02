@@ -61,7 +61,10 @@ class API {
       // Error handling
       if (!response.ok) {
         console.error("❌ API Error:", response.status, data);
-        let message = `HTTP ${response.status}`;
+        // Create an error object that includes the status code
+        const error = new Error();
+        error.status = response.status;
+
         if (data?.detail) {
           if (Array.isArray(data.detail)) {
             message =
@@ -71,19 +74,20 @@ class API {
                 )
                 .join("; ") || data.detail.join(", ");
           } else {
-            message = data.detail;
+            error.message = data.detail;
           }
         } else if (data?.error || data?.message) {
-          message = data.error || data.message;
+          error.message = data.error || data.message;
+        } else {
+          error.message = `HTTP ${response.status}`;
         }
-        throw new Error(message);
+        throw error;
       }
 
       debugLog("✅ API Success:", data);
       return data;
     } catch (err) {
       console.error("⚠️ Network/API error:", err.message);
-      console.error("Full error:", JSON.stringify(err, null, 2));
       throw new Error(err.message || "Network error occurred");
     }
   }
@@ -184,6 +188,71 @@ class API {
     return this.request(`/devices/${deviceId}`, { method: "DELETE" });
   }
 
+  // DASHBOARDS
+  async getDashboards() {
+    return this.request("/dashboards", { method: "GET" });
+  }
+
+  async addDashboard(dashboardData) {
+    return this.request("/dashboards", {
+      method: "POST",
+      body: JSON.stringify(dashboardData),
+    });
+  }
+
+  async deleteDashboard(dashboardId) {
+    return this.request(`/dashboards/${dashboardId}`, { method: "DELETE" });
+  }
+
+  async updateDashboardLayout(dashboardId, layoutData) {
+    return this.request(`/dashboards/${dashboardId}/layout`, {
+      method: "PUT",
+      body: JSON.stringify({ layout: layoutData }),
+    });
+  }
+
+  // WIDGETS
+  async getWidgets(dashboardId) {
+    return this.request(`/widgets/${dashboardId}`, { method: "GET" });
+  }
+
+  async addWidget(widgetData) {
+    return this.request("/widgets", {
+      method: "POST",
+      body: JSON.stringify(widgetData),
+    });
+  }
+
+  async deleteWidget(widgetId) {
+    return this.request(`/widgets/${widgetId}`, { method: "DELETE" });
+  }
+
+  // NOTIFICATIONS
+  async getNotifications(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.request(`/notifications?${query}`, { method: "GET" });
+  }
+
+  async markNotificationRead(notificationId) {
+    return this.request(`/notifications/${notificationId}/read`, { method: "PUT" });
+  }
+
+  async markAllNotificationsRead() {
+    return this.request("/notifications/read-all", { method: "PUT" });
+  }
+
+  async deleteNotification(notificationId) {
+    return this.request(`/notifications/${notificationId}`, { method: "DELETE" });
+  }
+
+  // USER PROFILE
+  async updateUser(userData) {
+    return this.request("/me", {
+      method: "PUT",
+      body: JSON.stringify(userData),
+    });
+  }
+
 // Add this in your API class
 async forgotPassword(email) {
   if (!email?.trim()) throw new Error("Enter your email.");
@@ -217,6 +286,14 @@ async getTelemetry(deviceToken) {
   // Use query param, not path param:
   return this.request(`/telemetry/latest?device_token=${deviceToken}`, { method: "GET" });
 }
+
+  // This function would fetch historical data for a chart.
+  // The backend would need a new endpoint like:
+  // GET /api/telemetry/history?device_id=<...>&key=<...>&period=24h
+  async getTelemetryHistory(deviceId, key, period = "24h") {
+    debugLog(`Fetching history for ${deviceId}, key: ${key}, period: ${period}`);
+    return this.request(`/telemetry/history?device_id=${deviceId}&key=${key}&period=${period}`);
+  }
 
 
   // SERVER CHECK

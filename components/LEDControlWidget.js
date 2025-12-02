@@ -337,7 +337,7 @@ const LEDControlWidget = ({
   const displaySchedule = pendingSchedules[0] || nextSchedule;
 
   return (
-    <>
+    <View>
       <TouchableOpacity
         onPress={handleToggle}
         onLongPress={onLongPress}
@@ -556,7 +556,7 @@ const LEDControlWidget = ({
           </View>
         </View>
       </Modal>
-    </>
+    </View>
   );
 };
 
