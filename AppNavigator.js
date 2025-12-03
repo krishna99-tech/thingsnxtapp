@@ -5,6 +5,7 @@ import {
   Platform,
   Dimensions,
   StyleSheet,
+  Text,
 } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -104,10 +105,11 @@ function MainTabs() {
         },
 
         // LABEL STYLE
-        tabBarShowLabel: true,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
+        tabBarLabel: ({ focused, color }) => {
+          // Only show the label for the active tab to save space
+          if (!focused) return null;
+          
+          return <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{route.name}</Text>;
         },
 
         tabBarActiveTintColor: COLORS.primary,

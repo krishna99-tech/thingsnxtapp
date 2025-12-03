@@ -8,8 +8,8 @@ import {
   Animated,
   Pressable,
   RefreshControl,
+  Dimensions,
   Modal,
-  TextInput,
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,157 +19,41 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthContext } from "../context/AuthContext";
 import api from "../services/api";
 import { DashboardProvider, useDashboard } from "../context/DashboardContext";
+import MemoizedDashboardWidget from "../components/dashboard/MemoizedDashboardWidget";
 
+import WidgetRenderer from "../components/widgets/WidgetRenderer";
+import AddLedWidgetModal from "../components/dashboard/AddLedWidgetModal";
 import CustomAlert from "../components/CustomAlert";
-// 🧩 Widget components
-import CardWidget from "../components/CardWidget";
-import GaugeWidget from "../components/GaugeWidget";
-import IndicatorWidget from "../components/IndicatorWidget";
-import LEDControlWidget from "../components/LEDControlWidget";
-import ChartWidget from "../components/ChartWidget";
+import WidgetSkeleton from "../components/WidgetSkeleton";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
 import { moderateScale } from "../utils/scaling";
 
-// 🎯 Memoized Widget Component - Prevents unnecessary re-renders
-const MemoizedWidget = memo(({ 
-  item, 
-  editMode, 
-  isDarkTheme,
-  onWidgetLongPress,
-  onDeleteWidget,
-  onResizeWidget
-}) => {
-  if (!item) return null;
-
-  // Select the correct component
-  let component = null;
-
-  switch (item.type) {
-    case "gauge":
-      component = (
-        <GaugeWidget
-          title={item.label}
-          value={item.value}
-          telemetry={item.telemetry?.[item.config?.key]}
-        />
-      );
-      break;
-
-    case "indicator":
-      component = (
-        <IndicatorWidget
-          title={item.label}
-          value={item.value}
-          telemetry={item.telemetry?.[item.config?.key]}
-        />
-      );
-      break;
-
-    case "led":
-      component = (
-        <LEDControlWidget
-          title={item.label}
-          widgetId={item._id}
-          deviceId={item.device_id}
-          deviceToken={item.device_token}
-          virtualPin={item.virtual_pin}
-          initialState={!!item.value}
-          nextSchedule={item.next_schedule}
-          onLongPress={() => onWidgetLongPress(item._id)}
-          onDelete={() => onDeleteWidget(item._id)}
-        />
-      );
-      break;
-
-    case "chart":
-      component = (
-        <ChartWidget
-          title={item.label}
-          deviceId={item.device_id}
-          config={item.config}
-          isDarkTheme={isDarkTheme}
-          lastUpdated={item.lastUpdated}
-        />
-      );
-      break;
-
-    default:
-      component = (
-        <CardWidget
-          title={item.label}
-          value={item.value}
-          telemetry={item.telemetry?.[item.config?.key]}
-          isDarkTheme={isDarkTheme}
-        />
-      );
-  }
-
-  const isLarge = item.width === 2;
-
-  return (
-    <View style={[styles.widgetWrapper, isLarge && styles.widgetWrapperLarge]}>
-      <View style={{ flex: 1 }}>
-        {component}
-      </View>
-
-      {editMode && (
-        <View style={styles.editOverlay}>
-          {/* Resize */}
-          <TouchableOpacity
-            style={styles.resizeHandle}
-            onPress={() => onResizeWidget(item._id, item.width)}
-          >
-            <Ionicons
-              name={isLarge ? "contract-outline" : "expand-outline"}
-              size={18}
-              color="#fff"
-            />
-          </TouchableOpacity>
-
-          {/* Delete */}
-          <TouchableOpacity
-            style={styles.deleteHandle}
-            onPress={() => onDeleteWidget(item._id)}
-            onPressIn={(e) => e.stopPropagation()}
-          >
-            <Ionicons name="trash-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
-}, (prevProps, nextProps) => {
-  // Only re-render if these specific props change
-  return (
-    prevProps.item._id === nextProps.item._id &&
-    prevProps.item.value === nextProps.item.value &&
-    prevProps.item.width === nextProps.item.width &&
-    prevProps.item.height === nextProps.item.height &&
-    prevProps.item.next_schedule === nextProps.item.next_schedule &&
-    prevProps.item.lastUpdated === nextProps.item.lastUpdated &&
-    prevProps.editMode === nextProps.editMode &&
-    prevProps.isDarkTheme === nextProps.isDarkTheme
-  );
-});
+// --- Responsive Grid Constants ---
+const { width: screenWidth } = Dimensions.get("window");
+const WIDGET_BASE_WIDTH = 170; // Based on LEDControlWidget width
+const WIDGET_MARGIN = 6 * 2; // From widgetWrapper padding
+const MIN_COLUMNS = 2;
+const calculateNumColumns = () => Math.max(MIN_COLUMNS, Math.floor(screenWidth / (WIDGET_BASE_WIDTH + WIDGET_MARGIN)));
 
 // 🎯 Main Dashboard Component
 function DashboardContent({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { logout, devices, isDarkTheme } = useContext(AuthContext);
+  const { isDarkTheme, showAlert } = useContext(AuthContext);
   const { widgets, setWidgets, loading, refreshing, onRefresh, fetchWidgets } = useDashboard();
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [addLedModalVisible, setAddLedModalVisible] = useState(false);
-  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
-  const [ledLabel, setLedLabel] = useState("");
-  const [creatingLed, setCreatingLed] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   const insets = useSafeAreaInsets();
 
   const [editMode, setEditMode] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // --- Responsive Grid State ---
+  const [numColumns, setNumColumns] = useState(calculateNumColumns());
+  const baseItemHeight = useMemo(() => screenWidth / numColumns * 0.85, [numColumns]);
 
   // Theme-based styles
   const themeStyles = useMemo(() => ({
@@ -179,9 +63,8 @@ function DashboardContent({ route, navigation }) {
     },
     title: { color: isDarkTheme ? "#FFFFFF" : "#111" },
     subtitle: { color: isDarkTheme ? "#CCCCCC" : "#555" },
-    modalCard: {
-      backgroundColor: isDarkTheme ? "#2C2C2C" : "#fff",
-    },
+    // Add modal styles back for AddLedWidgetModal
+    modalCard: { backgroundColor: isDarkTheme ? "#2C2C2C" : "#fff" },
     modalTitle: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
     modalSubtitle: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
     modalLabel: { color: isDarkTheme ? "#E0E0E0" : "#1f2937" },
@@ -190,6 +73,16 @@ function DashboardContent({ route, navigation }) {
     deviceToken: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
     input: { color: isDarkTheme ? "#FFFFFF" : "#111827", borderColor: isDarkTheme ? "#444" : "#cbd5f5" },
   }), [isDarkTheme]);
+
+  // --- Handle screen dimension changes ---
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setNumColumns(Math.max(MIN_COLUMNS, Math.floor(window.width / (WIDGET_BASE_WIDTH + WIDGET_MARGIN))));
+    });
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
 
   // 🧹 Delete dashboard
   const handleDeleteDashboard = useCallback(() => {
@@ -208,9 +101,8 @@ function DashboardContent({ route, navigation }) {
               await api.deleteDashboard(dashboard._id);
               showToast.success("Dashboard removed successfully");
               navigation.goBack();
-            } catch (err) {
+            } catch (err) { // API service will handle 401
               console.error("❌ Delete dashboard error:", err);
-              if (err.response?.status === 401) logout();
               showToast.error("Failed to delete dashboard");
             }
           },
@@ -218,104 +110,11 @@ function DashboardContent({ route, navigation }) {
       ],
     });
     setAlertVisible(true);
-  }, [dashboard._id, logout, navigation]);
+  }, [dashboard._id, navigation]);
 
   const handleOpenAddLed = useCallback(() => {
-    if (!devices || devices.length === 0) {
-      setAlertConfig({
-        type: 'warning', 
-        title: "No devices", 
-        message: "Add a device first before creating LED widgets.", 
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
-      return;
-    }
-    setSelectedDeviceId(devices[0]?._id || null);
-    setLedLabel("");
     setAddLedModalVisible(true);
-  }, [devices]);
-
-  const handleCreateLedWidget = useCallback(async () => {
-    if (!selectedDeviceId) {
-      setAlertConfig({
-        type: 'warning', 
-        title: "Select a device", 
-        message: "Please choose a device for the LED widget.", 
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
-      return;
-    }
-    
-    if (creatingLed) return;
-    
-    try {
-      setCreatingLed(true);
-      const newWidgetData = await api.addWidget({
-        dashboard_id: dashboard._id,
-        device_id: selectedDeviceId,
-        type: "led",
-        label: ledLabel?.trim() || "LED Control",
-        value: 0,
-      });
-
-      if (newWidgetData) {
-        const newWidget = {
-          ...newWidgetData,
-          _id: newWidgetData._id || newWidgetData.id || `temp-led-${Date.now()}`,
-          device_token: devices.find((d) => d._id === selectedDeviceId)?.device_token || null,
-          virtual_pin: newWidgetData.config?.virtual_pin,
-          key: (newWidgetData._id || newWidgetData.id || `temp-led-${Date.now()}`).toString(),
-          width: newWidgetData.width || 1,
-          height: newWidgetData.height || 1,
-        };
-        
-        setWidgets((prev) => {
-          const exists = prev.some((w) => String(w._id) === String(newWidget._id));
-          if (exists) {
-            return prev.map((w) => String(w._id) === String(newWidget._id) ? newWidget : w);
-          }
-          return [...prev, newWidget];
-        });
-      }
-      
-      setAddLedModalVisible(false);
-      setLedLabel("");
-      setSelectedDeviceId(null);
-      
-      setTimeout(() => {
-        fetchWidgets();
-      }, 500);
-      
-      showToast.success("LED widget created successfully.");
-    } catch (err) {
-      console.error("❌ Create LED widget error:", err);
-      
-      if (err.response?.status === 401) {
-        logout();
-        showToast.error("Session Expired", "Please login again.");
-      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        showToast.error("Timeout", "Request took too long. Please check your connection.");
-      } else {
-        const errorMessage = err.response?.data?.detail || err.message || "Failed to create LED widget";
-        showToast.error("Error", errorMessage);
-      }
-    } finally {
-      setCreatingLed(false);
-    }
-  }, [selectedDeviceId, creatingLed, dashboard._id, ledLabel, devices, fetchWidgets, logout]);
-
-  const availableDevices = useMemo(
-    () => (Array.isArray(devices) ? devices : []),
-    [devices]
-  );
-
-  useEffect(() => {
-    if (addLedModalVisible && availableDevices.length > 0 && !selectedDeviceId) {
-      setSelectedDeviceId(availableDevices[0]._id);
-    }
-  }, [addLedModalVisible, availableDevices, selectedDeviceId]);
+  }, []);
 
   // 🗑️ Delete widget
   const handleDeleteWidget = useCallback((widgetId) => {
@@ -334,9 +133,8 @@ function DashboardContent({ route, navigation }) {
               await api.deleteWidget(widgetId);
               setWidgets((prev) => prev.filter((w) => String(w._id) !== String(widgetId)));
               showToast.success("Widget deleted successfully");
-            } catch (err) {
+            } catch (err) { // API service will handle 401
               console.error("❌ Delete widget error:", err);
-              if (err.response?.status === 401) logout();
               showToast.error("Failed to delete widget");
             }
           },
@@ -344,7 +142,7 @@ function DashboardContent({ route, navigation }) {
       ],
     });
     setAlertVisible(true);
-  }, [logout]);
+  }, []);
 
   const handleWidgetLongPress = useCallback((widgetId) => {
     setAlertConfig({
@@ -391,7 +189,7 @@ function DashboardContent({ route, navigation }) {
   }, [hasChanges, widgets, dashboard._id]);
 
   // 🎯 Handle widget resize
-  const handleResizeWidget = useCallback((widgetId, currentWidth) => {
+  const handleResizeWidth = useCallback((widgetId, currentWidth) => {
     setWidgets(prev =>
       prev.map(w =>
         w._id === widgetId
@@ -402,19 +200,37 @@ function DashboardContent({ route, navigation }) {
     setHasChanges(true);
   }, []);
 
+  const handleResizeHeight = useCallback((widgetId, currentHeight) => {
+    setWidgets(prev =>
+      prev.map(w =>
+        w._id === widgetId
+          ? {
+              ...w,
+              // Toggle between 1x and 2x height, default to 1 if undefined
+              height: (currentHeight || 1) === 1 ? 2 : 1,
+            }
+          : w
+      )
+    );
+    setHasChanges(true);
+  }, []);
+
   // 🎯 Render widget with memoization
   const renderWidget = useCallback(({ item }) => {
     return (
-      <MemoizedWidget
+      item.isSkeleton ? 
+      <View style={styles.widgetWrapper}><WidgetSkeleton isDarkTheme={isDarkTheme} /></View> :
+      (<MemoizedDashboardWidget
         item={item}
         editMode={editMode}
         isDarkTheme={isDarkTheme}
-        onWidgetLongPress={handleWidgetLongPress}
-        onDeleteWidget={handleDeleteWidget}
-        onResizeWidget={handleResizeWidget}
+        onLongPress={handleWidgetLongPress}
+        onDeleteWidget={() => handleDeleteWidget(item._id)}
+        onResizeWidth={handleResizeWidth}
+        onResizeHeight={handleResizeHeight}
       />
-    );
-  }, [editMode, isDarkTheme, handleWidgetLongPress, handleDeleteWidget, handleResizeWidget]);
+    ));
+  }, [editMode, isDarkTheme, handleWidgetLongPress, handleDeleteWidget, handleResizeWidth, handleResizeHeight]);
 
   if (loading) {
     return (
@@ -467,7 +283,7 @@ function DashboardContent({ route, navigation }) {
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
         <ScrollView
           refreshControl={
-            <RefreshControl 
+            <RefreshControl
               refreshing={refreshing} 
               onRefresh={onRefresh} 
               tintColor={isDarkTheme ? "#FFFFFF" : "#000000"} 
@@ -477,8 +293,8 @@ function DashboardContent({ route, navigation }) {
         >
           {widgets.length > 0 ? (
             <DraggableGrid
-              numColumns={2}
-              data={widgets}
+              numColumns={numColumns}
+              data={loading ? Array.from({ length: 6 }).map((_, i) => ({ key: `skeleton-${i}`, isSkeleton: true })) : widgets}
               renderItem={(item) => (
                 <View style={{ flex: 1 }}>
                   {renderWidget({ item })}
@@ -488,7 +304,9 @@ function DashboardContent({ route, navigation }) {
                 setWidgets(data);
                 setHasChanges(true);
               }}
-              itemHeight={150}
+              itemHeight={(item) => {
+                return baseItemHeight * (item.height || 1);
+              }}
             />
           ) : (
             <View style={styles.emptyContainer}>
@@ -499,78 +317,13 @@ function DashboardContent({ route, navigation }) {
         </ScrollView>
       </Animated.View>
 
-      <Modal
+      <AddLedWidgetModal
         visible={addLedModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAddLedModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, themeStyles.modalCard]}>
-            <Text style={[styles.modalTitle, themeStyles.modalTitle]}>Add LED Widget</Text>
-            <Text style={[styles.modalSubtitle, themeStyles.modalSubtitle]}>
-              Choose a device to control its LED. Each widget gets a unique virtual pin automatically.
-            </Text>
-
-            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Select Device</Text>
-            <ScrollView style={styles.deviceList}>
-              {availableDevices.map((device) => {
-                const isSelected = selectedDeviceId === device._id;
-                return (
-                  <TouchableOpacity
-                    key={device._id}
-                    style={[
-                      styles.deviceRow,
-                      themeStyles.deviceRow,
-                      isSelected && styles.deviceRowSelected,
-                    ]}
-                    onPress={() => setSelectedDeviceId(device._id)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.deviceName, themeStyles.deviceName]}>
-                        {device.name || "Unnamed Device"}
-                      </Text>
-                      <Text style={[styles.deviceToken, themeStyles.deviceToken]}>
-                        Token: {device.device_token}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Widget Label</Text>
-            <TextInput
-              style={[styles.input, themeStyles.input]}
-              placeholder="Living room LED"
-              placeholderTextColor={isDarkTheme ? "#888" : "#999"}
-              value={ledLabel}
-              onChangeText={setLedLabel}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalCancel]}
-                onPress={() => setAddLedModalVisible(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalConfirm]}
-                onPress={handleCreateLedWidget}
-                disabled={creatingLed}
-              >
-                <Text style={styles.modalConfirmText}>
-                  {creatingLed ? "Adding..." : "Add Widget"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setAddLedModalVisible(false)}
+        dashboardId={dashboard._id}
+        onWidgetAdded={fetchWidgets} // Refetch widgets after one is added
+        themeStyles={themeStyles}
+      />
 
       <CustomAlert
         visible={alertVisible}
@@ -657,14 +410,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  resizeHandle: {
+  resizeHandleWidth: {
     position: 'absolute',
     bottom: 8,
     right: 8,
     backgroundColor: 'rgba(0, 122, 255, 0.8)',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resizeHandleHeight: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: 'rgba(0, 122, 255, 0.8)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -679,77 +443,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalCard: {
-    width: "92%",
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    maxHeight: "85%",
-  },
-  modalTitle: { fontSize: 22, fontWeight: "bold", color: "#0f172a" },
-  modalSubtitle: {
-    fontSize: 14,
-    color: "#475569",
-    marginVertical: 10,
-  },
-  modalLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1f2937",
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  deviceList: { maxHeight: 200 },
-  deviceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  deviceRowSelected: {
-    borderWidth: 1,
-    borderColor: "#3b82f6",
-    backgroundColor: "#dbeafe",
-  },
-  deviceName: {
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-  deviceToken: {
-    fontSize: 12,
-    color: "#475569",
-    marginTop: 4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    color: "#111827",
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 18,
-  },
-  modalBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  modalCancel: { backgroundColor: "#e2e8f0" },
-  modalConfirm: { backgroundColor: "#2563eb" },
-  modalCancelText: { color: "#1e293b", fontWeight: "600" },
-  modalConfirmText: { color: "#fff", fontWeight: "700" },
 });

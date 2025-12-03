@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"; // Correct import
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons"; 
 import { LinearGradient } from "expo-linear-gradient";
 import CustomAlert from "../components/CustomAlert";
 
@@ -22,11 +22,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login } = useAuth();
-  const { isDarkTheme } = useAuth();
+  const { login, isDarkTheme, showAlert } = useAuth();
   const navigation = useNavigation();
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({});
 
   // Handle Login
   const handleLogin = async () => {
@@ -42,7 +39,20 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(identifier.trim(), password);
+      const loginResult = await login(identifier.trim(), password);
+      if (loginResult) {
+        // Show success alert AFTER navigation to ensure it appears on the home screen
+        // Use the global showAlert from AuthContext
+        navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });
+        setTimeout(() => {
+          showAlert({
+            type: 'success',
+            title: "Login Success",
+            message: `Welcome back, ${loginResult.user?.username || ""}!`,
+            buttons: [{ text: "Continue" }],
+          });
+        }, 500); // Small delay to ensure screen transition is complete
+      }
     } finally {
       setLoading(false);
     }
@@ -144,11 +154,6 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
-      <CustomAlert
-        visible={alertVisible}
-        isDarkTheme={isDarkTheme}
-        {...alertConfig}
-      />
     </SafeAreaView>
   );
 }

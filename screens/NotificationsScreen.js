@@ -27,9 +27,8 @@ import {
   ArrowUpCircle,
 } from "lucide-react-native";
 import { AuthContext } from "../context/AuthContext";
-import axios from "axios";
-import { API_BASE } from "../constants/config";
 import { formatDate } from "../utils/format";
+import api from "../services/api";
 import CustomAlert from "../components/CustomAlert";
 // Use formatDate(notification.created_at) or similar for displaying dates in notification list.
 
@@ -105,12 +104,10 @@ export default function NotificationsScreen() {
     if (!userToken) return;
     
     try {
-      const response = await axios.get(`${API_BASE}/notifications`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-        params: { limit: 50 },
-      });
+      // Use the api service which handles tokens automatically
+      const response = await api.getNotifications({ limit: 50 });
       
-      const data = response.data?.notifications || [];
+      const data = response?.notifications || [];
       const formatted = data.map((notif) => ({
         id: notif._id || notif.id,
         title: notif.title,
@@ -124,8 +121,8 @@ export default function NotificationsScreen() {
       
       setNotifications(formatted);
     } catch (err) {
-      console.error("Failed to load notifications:", err);
-      if (err.response?.status === 401) logout();
+      console.error("Failed to load notifications:", err.message);
+      // API service will handle 401 and logout if refresh fails
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -136,111 +133,67 @@ export default function NotificationsScreen() {
     if (!userToken) return;
 
     loadNotifications();
+    
+    let sseController;
 
-    const setupSSE = () => {
-      try {
-        const connectSSE = async () => {
-          try {
-            const response = await fetch(`${API_BASE}/notifications/stream`, {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${userToken}`,
-                Accept: "text/event-stream",
-              },
-            });
-
-            if (!response.ok) {
-              // If unauthorized, log out and stop retrying.
-              if (response.status === 401) {
-                console.error("SSE connection unauthorized. Logging out.");
-                logout();
-                return; // Stop the process
-              }
-              throw new Error(`SSE connection failed: ${response.status}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            const readStream = async () => {
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-
-                  const chunk = decoder.decode(value);
-                  const lines = chunk.split("\n");
-
-                  for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                      try {
-                        const data = JSON.parse(line.substring(6));
-                        
-                        if (data.type === "notification" && data.notification) {
-                          const notif = data.notification;
-                          setNotifications((prev) => [
-                            {
-                              id: notif._id || notif.id,
-                              title: notif.title,
-                              message: notif.message,
-                              type: notif.type || "info",
-                              category: notif.category || "system",
-                              timestamp: new Date(notif.created_at),
-                              read: false,
-                              deviceId: notif.details?.device_id,
-                            },
-                            ...prev,
-                          ]);
-                        } else if (data.type === "initial") {
-                          // Initial notifications
-                          if (data.notifications && data.notifications.length > 0) {
-                            const formatted = data.notifications.map((notif) => ({
-                              id: notif.id || notif._id,
-                              title: notif.title,
-                              message: notif.message,
-                              type: notif.type || "info",
-                              category: notif.category || "system",
-                              timestamp: new Date(notif.created_at),
-                              read: notif.read || false,
-                              deviceId: notif.details?.device_id,
-                            }));
-                            setNotifications((prev) => {
-                              const existingIds = new Set(prev.map((n) => n.id));
-                              const newNotifs = formatted.filter((n) => !existingIds.has(n.id));
-                              return [...newNotifs, ...prev];
-                            });
-                          }
-                        }
-                      } catch (parseErr) {
-                        console.error("Error parsing SSE data:", parseErr);
-                      }
-                    }
-                  }
-                }
-              } catch (readErr) {
-                console.error("SSE read error:", readErr);
-              }
-            };
-
-            readStream();
-          } catch (err) { // This will catch the `throw new Error` above
-            console.error("SSE connection error:", err);
-            // Retry connection after delay
-            setTimeout(connectSSE, 5000);
-          }
-        };
-
-        connectSSE();
-      } catch (err) {
-        console.error("SSE setup error:", err);
+    const handleSSEMessage = (data) => {
+      if (data.type === "notification" && data.notification) {
+        const notif = data.notification;
+        setNotifications((prev) => [
+          {
+            id: notif._id || notif.id,
+            title: notif.title,
+            message: notif.message,
+            type: notif.type || "info",
+            category: notif.category || "system",
+            timestamp: new Date(notif.created_at),
+            read: false,
+            deviceId: notif.details?.device_id,
+          },
+          ...prev,
+        ]);
+      } else if (data.type === "initial" && data.notifications?.length > 0) {
+        const formatted = data.notifications.map((notif) => ({
+          id: notif.id || notif._id,
+          title: notif.title,
+          message: notif.message,
+          type: notif.type || "info",
+          category: notif.category || "system",
+          timestamp: new Date(notif.created_at),
+          read: notif.read || false,
+          deviceId: notif.details?.device_id,
+        }));
+        setNotifications((prev) => {
+          const existingIds = new Set(prev.map((n) => n.id));
+          const newNotifs = formatted.filter((n) => !existingIds.has(n.id));
+          return [...newNotifs, ...prev];
+        });
       }
     };
 
-    setupSSE();
+    const handleSSEError = (err) => {
+      console.error("SSE connection error:", err.message);
+      if (err.message.includes("401")) {
+        logout();
+      }
+      // Note: The api.js service does not auto-retry streaming connections.
+      // You could add a retry mechanism here if needed.
+    };
+
+    api.streamNotifications(handleSSEMessage, handleSSEError).then(controller => {
+      sseController = controller;
+    });
 
     navigation.setOptions({
       headerRight: () => unreadCount > 0 ? <HeaderRight /> : null,
     });
+
+    // Cleanup function to abort the connection when the component unmounts
+    return () => {
+      if (sseController) {
+        sseController.abort();
+      }
+    };
   }, [userToken]);
 
   const onRefresh = () => {
@@ -272,35 +225,26 @@ export default function NotificationsScreen() {
     if (notification?.read) return;
 
     try {
-      axios.put(
-        `${API_BASE}/notifications/${notificationId}/read`,
-        {},
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      // Use the api service (fire and forget)
+      api.markNotificationRead(notificationId).catch(err => console.error("Mark as read failed:", err.message));
       
       setNotifications((prev) =>
         prev.map((notif) =>
           notif.id === notificationId ? { ...notif, read: true } : notif
         )
       );
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-      if (err.response?.status === 401) logout();
-    }
+    } catch (err) { // This catch is for synchronous errors, though the API call is now async
+      console.error("Error marking notification as read:", err.message); // API service will handle 401
+    } 
   };
 
   const markAllAsRead = async () => {
     if (!userToken) return;
     try {
-      await axios.put(
-        `${API_BASE}/notifications/read-all`,
-        {},
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      await api.markAllNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
-      console.error("Error marking all as read:", err);
-      if (err.response?.status === 401) logout();
+      console.error("Error marking all as read:", err.message); // API service will handle 401
       setAlertConfig({
         type: 'error',
         title: "Error",
@@ -322,15 +266,12 @@ export default function NotificationsScreen() {
     if (!userToken) return;
 
     try {
-      await axios.delete(`${API_BASE}/notifications/${notificationId}`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
+      await api.deleteNotification(notificationId);
       setNotifications((prev) =>
         prev.filter((notif) => notif.id !== notificationId)
       );
     } catch (err) {
-      console.error("Error deleting notification:", err);
-      if (err.response?.status === 401) logout();
+      console.error("Error deleting notification:", err.message); // API service will handle 401
       setAlertConfig({
         type: 'error',
         title: "Error",

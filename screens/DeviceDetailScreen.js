@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import CustomAlert from "../components/CustomAlert";
-import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
 import * as Clipboard from "expo-clipboard";
@@ -38,6 +37,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
+import WidgetRenderer from "../components/widgets/WidgetRenderer";
+import DeviceDetailSkeleton from "../components/DeviceDetailSkeleton";
 
 const COLORS = {
   background: "#0A0E27",
@@ -86,21 +87,61 @@ function getTimeSince(date) {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+// --- Memoized Sensor Card Component ---
+const SensorCard = React.memo(({ sensor, onPress, Colors }) => (
+  <TouchableOpacity
+    style={[styles.sensorCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}
+    activeOpacity={0.8}
+    onPress={() => onPress(sensor)}
+  >
+    <View style={[styles.sensorIconContainer, { backgroundColor: `${Colors.primary}1A` }]}>
+      {getSensorIcon(sensor.type, 24, Colors.primary)}
+    </View>
+    <Text style={[styles.sensorLabel, { color: Colors.text }]}>{sensor.label}</Text>
+    <View style={styles.sensorValueContainer}>
+      <Text style={[styles.sensorValue, { color: Colors.primary }]}>
+        {typeof sensor.value === "number"
+          ? sensor.value.toFixed(sensor.type === "temperature" ? 1 : 0)
+          : String(sensor.value)}
+      </Text>
+      <Text style={[styles.sensorUnit, { color: Colors.textSecondary }]}>{sensor.unit}</Text>
+    </View>
+    <Text style={[styles.sensorTimestamp, { color: Colors.textSecondary }]}>
+      Updated {getTimeSince(sensor.timestamp)}
+    </Text>
+  </TouchableOpacity>
+));
+
 export default function DeviceDetailScreen({ route, navigation }) {
   const { deviceId } = route.params;
-  const { devices, deleteDevice, fetchTelemetry, userToken, logout, isDarkTheme, showAlert } = useContext(AuthContext);
+  const { devices, deleteDevice, fetchTelemetry, userToken, logout, isDarkTheme, showAlert, isRefreshing: isContextRefreshing } = useContext(AuthContext);
 
-  // State for modals
-  const [widgetModalVisible, setWidgetModalVisible] = useState(false);
-  const [dashboardModalVisible, setDashboardModalVisible] = useState(false);
+  // --- Refactored State for Single Modal Flow ---
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalStep, setModalStep] = useState('select_widget'); // 'select_widget' or 'select_dashboard'
   const [dashboards, setDashboards] = useState([]);
   const [selectedSensor, setSelectedSensor] = useState(null);
   const [selectedWidgetType, setSelectedWidgetType] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+
+  // --- Theme-aware Colors ---
+  const Colors = useMemo(() => ({
+    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
+    card: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+    cardBorder: isDarkTheme ? "#252B4A" : "#E2E8F0",
+    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
+    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
+    success: isDarkTheme ? "#00FF88" : "#16A34A",
+    warning: isDarkTheme ? "#FFB800" : "#F59E0B",
+    danger: isDarkTheme ? "#FF3366" : "#DC2626",
+    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
+    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
+    online: "#00FF88",
+    offline: "#FF3366",
+  }), [isDarkTheme]);
 
   const device = devices.find((d) => String(d.id || d._id) === String(deviceId));
 
@@ -116,32 +157,36 @@ export default function DeviceDetailScreen({ route, navigation }) {
     }));
   }, [device]);
 
+  const handleRefresh = useCallback(() => {
+    if (!device?.device_token) return;
+    setRefreshing(true);
+    fetchTelemetry(device.device_token)
+      .catch((err) => {
+        console.error("Failed to refresh telemetry:", err);
+        showAlert({ type: 'error', title: "Refresh Failed", message: "Could not fetch latest device data." });
+      })
+      .finally(() => setRefreshing(false));
+  }, [device?.device_token, fetchTelemetry, showAlert]);
+
   useEffect(() => {
     if (device) {
       navigation.setOptions({
         headerTitle: device.name,
-        headerStyle: { backgroundColor: COLORS.card },
-        headerTintColor: COLORS.text,
-        headerRight: () => (
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}>
-              <RefreshCw size={20} color={COLORS.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleDeleteDevice} style={styles.headerButton}>
-              <Trash2 size={20} color={COLORS.danger} />
-            </TouchableOpacity>
-          </View>
-        ),
       });
     }
-  }, [device, navigation]);
+  }, [device, navigation, Colors]);
+
+  // Show skeleton while context is refreshing and device is not yet found
+  if (isContextRefreshing && !device) {
+    return <DeviceDetailSkeleton isDarkTheme={isDarkTheme} />;
+  }
 
   if (!device) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: Colors.background }]}>
         <View style={styles.errorContainer}>
-          <AlertTriangle size={64} color={COLORS.danger} />
-          <Text style={styles.errorTitle}>Device not found</Text>
+          <AlertTriangle size={64} color={Colors.danger} />
+          <Text style={[styles.errorTitle, { color: Colors.text }]}>Device not found</Text>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
@@ -150,12 +195,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
     );
   }
 
-  const handleCopyToken = async () => {
+  const handleCopyToken = useCallback(async () => {
     await Clipboard.setStringAsync(device.device_token);
     showToast.success("Token copied to clipboard!");
-  };
+  }, [device.device_token]);
 
-  const handleDeleteDevice = () => {
+  const handleDeleteDevice = useCallback(() => {
     setAlertConfig({
       type: 'confirm',
       title: "Delete Device",
@@ -174,28 +219,25 @@ export default function DeviceDetailScreen({ route, navigation }) {
       ]
     });
     setAlertVisible(true);
-  };
+  }, [deleteDevice, device, navigation]);
 
-  const handleRefresh = () => {
-    if (!device?.device_token) return;
-    setRefreshing(true);
-    fetchTelemetry(device.device_token)
-      .catch(() => {
-        console.error("Failed to refresh telemetry:", err);
-        setAlertConfig({
-          type: 'error', title: "Refresh Failed", message: "Could not fetch latest device data.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-        });
-        setAlertVisible(true);
-      })
-      .finally(() => {
-        setRefreshing(false);
-      });
-  };
+  // Set header options, including buttons with stable callbacks
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}><RefreshCw size={20} color={Colors.primary} /></TouchableOpacity>
+          <TouchableOpacity onPress={handleDeleteDevice} style={styles.headerButton}><Trash2 size={20} color={Colors.danger} /></TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, handleRefresh, handleDeleteDevice, Colors]);
 
-  const handleSensorPress = (sensor) => {
+  const handleSensorPress = useCallback((sensor) => {
     setSelectedSensor(sensor);
-    setWidgetModalVisible(true);
-  };
+    setModalStep('select_widget');
+    setModalVisible(true);
+  }, []);
 
   const fetchDashboards = async () => {
     if (!userToken) {
@@ -210,7 +252,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
       setDashboards(data);
     } catch (err) {
       console.error(err);
-      setAlertConfig({
+      setAlertConfig({ // API service will handle 401
         type: 'error', title: "Error", message: "Could not load dashboards", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
       });
       setAlertVisible(true);
@@ -219,9 +261,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
   const handleWidgetSelect = (type) => {
     setSelectedWidgetType(type);
-    setWidgetModalVisible(false);
+    setModalStep('select_dashboard');
     fetchDashboards();
-    setDashboardModalVisible(true);
   };
 
   const exportToDashboard = async (dashboardId) => {
@@ -255,19 +296,15 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
       await api.addWidget(payload);
 
-      setDashboardModalVisible(false);
+      setModalVisible(false);
       setSelectedSensor(null);
       setSelectedWidgetType(null);
       showToast.success(`Widget '${widgetLabel || 'Sensor'}' added to dashboard`);
     } catch (err) {
       console.error("Export to dashboard error:", err);
 
-      if (err.response?.status === 401) {
-        logout();
-        showAlert({
-          type: 'error', title: "Session Expired", message: "Please login again.", buttons: [{ text: "OK" }]
-        });
-      } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+      // API service will handle 401 and logout if refresh fails
+      if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
         setAlertConfig({
           type: 'error', title: "Timeout", message: "Request took too long. Please check your connection.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
         });
@@ -286,14 +323,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
   };
 
   const statusColor =
-    device.status === "online"
-      ? COLORS.online
-      : device.status === "offline"
-      ? COLORS.offline
-      : COLORS.warning;
+    device.status === "online" ? Colors.online
+    : device.status === "offline" ? Colors.offline
+    : Colors.warning;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -301,14 +336,14 @@ export default function DeviceDetailScreen({ route, navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COLORS.primary}
+            tintColor={Colors.primary}
           />
         }
       >
-        <View style={styles.statusCard}>
+        <View style={[styles.statusCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
           <View style={styles.statusHeader}>
-            <View style={styles.deviceIcon}>
-              <Cpu size={32} color={COLORS.primary} />
+            <View style={[styles.deviceIcon, { backgroundColor: `${Colors.primary}1A` }]}>
+              <Cpu size={32} color={Colors.primary} />
             </View>
             <View style={styles.statusInfo}>
               <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
@@ -317,84 +352,73 @@ export default function DeviceDetailScreen({ route, navigation }) {
                   {device.status.toUpperCase()}
                 </Text>
               </View>
-              <Text style={styles.deviceType}>{device.type}</Text>
+              <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{device.type}</Text>
             </View>
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: Colors.cardBorder }]} />
 
           <View style={styles.infoGrid}>
             <View style={styles.infoItem}>
-              <MapPin size={16} color={COLORS.textSecondary} />
-              <Text style={styles.infoLabel}>Location</Text>
-              <Text style={styles.infoValue}>{device.location || "Not set"}</Text>
+              <MapPin size={16} color={Colors.textSecondary} />
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Location</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>{device.location || "Not set"}</Text>
             </View>
             <View style={styles.infoItem}>
-              <Clock size={16} color={COLORS.textSecondary} />
-              <Text style={styles.infoLabel}>Last Seen</Text>
-              <Text style={styles.infoValue}>{getTimeSince(device.last_active)}</Text>
+              <Clock size={16} color={Colors.textSecondary} />
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Last Seen</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>{getTimeSince(device.last_active)}</Text>
             </View>
             <View style={styles.infoItem}>
-              <Wifi size={16} color={COLORS.textSecondary} />
-              <Text style={styles.infoLabel}>IP Address</Text>
-              <Text style={styles.infoValue}>{device.ipAddress || "Unknown"}</Text>
+              <Wifi size={16} color={Colors.textSecondary} />
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>IP Address</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>{device.ipAddress || "Unknown"}</Text>
             </View>
             <View style={styles.infoItem}>
-              <Activity size={16} color={COLORS.textSecondary} />
-              <Text style={styles.infoLabel}>Firmware</Text>
-              <Text style={styles.infoValue}>
+              <Activity size={16} color={Colors.textSecondary} />
+              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Firmware</Text>
+              <Text style={[styles.infoValue, { color: Colors.text }]}>
                 {device.firmwareVersion || "Unknown"}
               </Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section]}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Access Token</Text>
+            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Access Token</Text>
           </View>
-          <View style={[styles.tokenCard, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-            <Text selectable style={styles.tokenText} numberOfLines={1} ellipsizeMode="middle">
+          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <Text selectable style={[styles.tokenText, { color: Colors.primary }]} numberOfLines={1} ellipsizeMode="middle">
               {device.device_token}
             </Text>
-            <TouchableOpacity onPress={handleCopyToken} style={{ padding: 8, marginLeft: 8, backgroundColor: `${COLORS.primary}20`, borderRadius: 8 }}>
-              <Copy size={18} color={COLORS.primary} />
+            <TouchableOpacity onPress={handleCopyToken} style={{ padding: 8, marginLeft: 8, backgroundColor: `${Colors.primary}20`, borderRadius: 8 }}>
+              <Copy size={18} color={Colors.primary} />
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
+            <Text style={[styles.sectionTitle, { color: Colors.text }]}>
               Sensors ({sensors.length})
             </Text>
           </View>
-          <View style={styles.sensorsGrid}>
-            {sensors.map((sensor) => (
-              <TouchableOpacity key={sensor.id} style={styles.sensorCard} activeOpacity={0.8} onPress={() => handleSensorPress(sensor)}>
-                <View style={styles.sensorIconContainer}>
-                  {getSensorIcon(sensor.type, 24, COLORS.primary)}
-                </View>
-                <Text style={styles.sensorLabel}>{sensor.label}</Text>
-                <View style={styles.sensorValueContainer}>
-                  <Text style={styles.sensorValue}>
-                    {typeof sensor.value === "number"
-                      ? sensor.value.toFixed(sensor.type === "temperature" ? 1 : 0)
-                      : String(sensor.value)}
-                  </Text>
-                  <Text style={styles.sensorUnit}>{sensor.unit}</Text>
-                </View>
-                <Text style={styles.sensorTimestamp}>
-                  Updated {getTimeSince(sensor.timestamp)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
+          <FlatList
+            data={sensors}
+            renderItem={({ item }) => (
+              <SensorCard sensor={item} onPress={handleSensorPress} Colors={Colors} />
+            )}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            columnWrapperStyle={styles.sensorsGrid}
+            scrollEnabled={false} // The list is inside a ScrollView
+            // The empty component is handled below
+          />
           {sensors.length === 0 && (
             <View style={styles.emptyState}>
-              <Activity size={48} color={COLORS.textSecondary} />
-              <Text style={styles.emptyStateText}>No sensors configured</Text>
+              <Activity size={48} color={Colors.textSecondary} />
+              <Text style={[styles.emptyStateText, { color: Colors.textSecondary }]}>No sensors configured</Text>
               <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
                 <Text style={styles.refreshButtonText}>Refresh Telemetry</Text>
               </TouchableOpacity>
@@ -403,74 +427,69 @@ export default function DeviceDetailScreen({ route, navigation }) {
         </View>
       </ScrollView>
 
-      {/* Widget Type Modal */}
-      <Modal visible={widgetModalVisible} transparent animationType="slide">
+      {/* --- Refactored Add to Dashboard Modal --- */}
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Add Widget for:</Text>
-            <Text style={styles.modalSub}>{selectedSensor?.label}</Text>
-            <View style={styles.widgetOptions}>
-              {["card", "gauge", "indicator", "chart"].map((type) => (
-                <Pressable
-                  key={type}
-                  style={styles.widgetOption}
-                  onPress={() => handleWidgetSelect(type)}
-                >
-                  <Ionicons
-                    name={
-                      type === "gauge"
-                        ? "speedometer-outline"
-                        : type === "indicator"
-                        ? "radio-button-on-outline"
-                        : type === "chart"
-                        ? "analytics-outline"
-                        : "albums-outline"
-                    }
-                    size={22}
-                    color="#007AFF"
-                  />
-                  <Text style={styles.widgetText}>
-                    {type.toUpperCase()}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable onPress={() => setWidgetModalVisible(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Dashboard Selection Modal */}
-      <Modal visible={dashboardModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Select Dashboard</Text>
-            {isSubmitting ? <ActivityIndicator style={{ marginVertical: 20 }}/> : (
-              <FlatList
-                data={dashboards}
-                keyExtractor={(item) => item._id.toString()}
-                renderItem={({ item }) => (
-                  <Pressable
-                    style={styles.dashboardItem}
-                    onPress={() => exportToDashboard(item._id)}
-                  >
-                    <Text style={styles.dashboardName}>{item.name}</Text>
-                    <Text style={styles.dashboardDesc}>{item.description}</Text>
-                  </Pressable>
-                )}
-                ListEmptyComponent={() => (
-                  <Text style={{ textAlign: 'center', color: '#888' }}>No dashboards found.</Text>
-                )}
-              />
+          <View style={[styles.modalView, { backgroundColor: Colors.card }]}>
+            {modalStep === 'select_widget' && (
+              <>
+                <Text style={[styles.modalTitle, { color: Colors.text }]}>Add Widget for '{selectedSensor?.label}'</Text>
+                <Text style={[styles.modalSub, { color: Colors.textSecondary }]}>Choose a widget style to display this sensor on a dashboard.</Text>
+                <View style={styles.widgetOptions}>
+                  {[
+                    "card", "gauge", "indicator", "chart", 
+                    "digital", "thermometer", "tank", "battery",
+                    "status", "energy"
+                  ].map((type) => (
+                    <Pressable key={type} style={styles.widgetOption} onPress={() => handleWidgetSelect(type)}>
+                      <View style={styles.widgetPreview}>
+                        <WidgetRenderer
+                          item={{
+                            type: type,
+                            label: selectedSensor?.label,
+                            value: selectedSensor?.value,
+                            config: { key: selectedSensor?.id },
+                            device_id: device?._id,
+                          }}
+                          isDarkTheme={isDarkTheme}
+                        />
+                      </View>
+                      <Text style={[styles.widgetText, { color: Colors.primary }]}>{type.toUpperCase()}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
             )}
-            <Pressable
-              onPress={() => setDashboardModalVisible(false)}
-              disabled={isSubmitting}
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
+
+            {modalStep === 'select_dashboard' && (
+              <>
+                <Text style={[styles.modalTitle, { color: Colors.text }]}>Select Dashboard</Text>
+                <Text style={[styles.modalSub, { color: Colors.textSecondary }]}>Where should this widget be added?</Text>
+                {isSubmitting ? <ActivityIndicator style={{ marginVertical: 20 }} color={Colors.primary} /> : (
+                  <FlatList
+                    data={dashboards}
+                    keyExtractor={(item) => item._id.toString()}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        style={[styles.dashboardItem, { backgroundColor: Colors.cardBorder }]}
+                        onPress={() => exportToDashboard(item._id)}
+                      >
+                        <Text style={[styles.dashboardName, { color: Colors.text }]}>{item.name}</Text>
+                        <Text style={[styles.dashboardDesc, { color: Colors.textSecondary }]}>{item.description}</Text>
+                      </Pressable>
+                    )}
+                    ListEmptyComponent={() => (
+                      <Text style={{ textAlign: 'center', color: Colors.textSecondary, marginVertical: 20 }}>No dashboards found.</Text>
+                    )}
+                    style={{ maxHeight: 250, marginVertical: 10 }}
+                  />
+                )}
+              </>
+            )}
+
+            <TouchableOpacity onPress={() => setModalVisible(false)} disabled={isSubmitting}>
+              <Text style={[styles.cancelText, { color: Colors.primary }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -488,7 +507,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    // backgroundColor is set dynamically
   },
   scrollView: {
     flex: 1,
@@ -502,12 +521,10 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   statusCard: {
-    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 20,
     margin: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
   },
   statusHeader: {
     flexDirection: "row",
@@ -518,7 +535,6 @@ const styles = StyleSheet.create({
   deviceIcon: {
     width: 64,
     height: 64,
-    backgroundColor: "rgba(0, 217, 255, 0.1)",
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -545,11 +561,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontWeight: "600",
   },
-  deviceType: {
-    fontSize: moderateScale(16),
-    fontWeight: "500",
-    color: COLORS.textSecondary,
-  },
   divider: {
     height: 1,
     backgroundColor: COLORS.cardBorder,
@@ -566,12 +577,10 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: moderateScale(12),
-    color: COLORS.textSecondary,
   },
   infoValue: {
     fontSize: moderateScale(14),
     fontWeight: "600",
-    color: COLORS.text,
   },
   section: {
     paddingHorizontal: 20,
@@ -583,28 +592,22 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: moderateScale(18),
     fontWeight: "600",
-    color: COLORS.text,
   },
   tokenCard: {
-    backgroundColor: COLORS.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
   },
   sensorCard: {
-    backgroundColor: COLORS.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     width: "48.5%", // Adjusted for better spacing in a 2-column layout
     gap: 8,
   },
   sensorIconContainer: {
     width: 48,
     height: 48,
-    backgroundColor: "rgba(0, 217, 255, 0.1)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -613,7 +616,6 @@ const styles = StyleSheet.create({
   sensorLabel: {
     fontSize: moderateScale(13),
     fontWeight: "500",
-    color: COLORS.text,
   },
   sensorValueContainer: {
     flexDirection: "row",
@@ -623,15 +625,12 @@ const styles = StyleSheet.create({
   sensorValue: {
     fontSize: moderateScale(28, 0.3),
     fontWeight: "700",
-    color: COLORS.primary,
   },
   sensorUnit: {
     fontSize: moderateScale(14),
-    color: COLORS.textSecondary,
   },
   sensorTimestamp: {
     fontSize: moderateScale(11),
-    color: COLORS.textSecondary,
   },
   emptyState: {
     alignItems: "center",
@@ -641,7 +640,6 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: moderateScale(14),
-    color: COLORS.textSecondary,
   },
   refreshButton: {
     backgroundColor: COLORS.primary,
@@ -664,7 +662,6 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: moderateScale(20),
     fontWeight: "600",
-    color: COLORS.text,
   },
   backButton: {
     backgroundColor: COLORS.primary,
@@ -680,30 +677,35 @@ const styles = StyleSheet.create({
   },
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
-  modalView: { width: "85%", backgroundColor: "#1F2937", borderRadius: 16, padding: 20, elevation: 6 },
-  modalTitle: { fontSize: moderateScale(20), fontWeight: "bold", color: '#FFF', marginBottom: 10, textAlign: 'center' },
-  modalSub: { color: "#D1D5DB", marginBottom: 12, textAlign: "center", fontSize: moderateScale(16) },
+  modalView: { width: "90%", maxWidth: 400, borderRadius: 16, padding: 20, elevation: 6 },
+  modalTitle: { fontSize: moderateScale(20), fontWeight: "bold", marginBottom: 4, textAlign: 'center' },
+  modalSub: { marginBottom: 16, textAlign: "center", fontSize: moderateScale(14) },
   widgetOptions: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     marginVertical: 10,
+    gap: 10,
   },
   widgetOption: {
-    width: "40%",
-    margin: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
+    width: "48%",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+  },
+  widgetPreview: {
+    height: 140,
+    width: '100%',
+    transform: [{ scale: 0.8 }], // Scale down for preview
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   widgetText: {
-    color: "#00D9FF",
-    fontWeight: "bold",
-    marginTop: 4
+    fontWeight: "600",
+    fontSize: moderateScale(12),
   },
   dashboardItem: {
-    backgroundColor: "#374151",
     padding: 12,
     borderRadius: 10,
     marginBottom: 8,
@@ -711,28 +713,25 @@ const styles = StyleSheet.create({
   dashboardName: {
     fontWeight: "bold",
     fontSize: moderateScale(16),
-    color: '#FFF'
   },
   dashboardDesc: {
-    color: "#9CA3AF",
     fontSize: moderateScale(14)
   },
   cancelText: {
-    color: "#00D9FF",
     textAlign: "center",
-    marginTop: 10,
+    marginTop: 12,
     fontSize: moderateScale(16),
-    padding: 8
+    padding: 10,
+    fontWeight: '600',
   },
   tokenText: {
     flex: 1, // Allow text to take available space
     fontSize: moderateScale(14),
     fontFamily: Platform.select({ ios: "Courier", android: "monospace" }),
-    color: COLORS.primary,
   },
   sensorsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
+    // Now used as columnWrapperStyle for FlatList
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
 });

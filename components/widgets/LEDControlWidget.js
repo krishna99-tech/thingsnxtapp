@@ -21,10 +21,9 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Lightbulb, Calendar, Timer, Trash2, X } from "lucide-react-native";
-import { Ionicons } from "@expo/vector-icons"; // Keeping Ionicons for Modals to ensure compatibility
-import axios from "axios";
-import { AuthContext } from "../context/AuthContext";
-import { API_BASE } from "../constants/config";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../context/AuthContext";
+import api from "../../services/api";
 
 // Fallback colors if @/constants/colors is missing
 const Colors = {
@@ -67,7 +66,7 @@ const LEDControlWidget = ({
   const [scheduleLabel, setScheduleLabel] = useState("");
 
   const prevWidgetIdRef = useRef(widgetId);
-  const { userToken, logout, wsRef } = useContext(AuthContext);
+  const { wsRef, logout } = useAuth();
 
   // Helper: Get IST Date
   const getISTDateTime = (offsetMinutes = 1) => {
@@ -134,29 +133,25 @@ const LEDControlWidget = ({
   }, [widgetId, initialState]);
 
   const fetchSchedules = useCallback(async () => {
-    if (!widgetId || !userToken) return;
+    if (!widgetId) return;
     try {
       setLoadingSchedules(true);
-      const res = await axios.get(
-        `${API_BASE}/widgets/${widgetId}/schedule`,
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
-      const list = Array.isArray(res.data?.schedules) ? res.data.schedules : [];
-      setSchedules(list);
+      const data = await api.getWidgetSchedules(widgetId);
+      setSchedules(Array.isArray(data?.schedules) ? data.schedules : []);
     } catch (err) {
       console.error("LED schedule fetch error:", err.message);
       if (err.response?.status === 401) logout?.();
     } finally {
       setLoadingSchedules(false);
     }
-  }, [widgetId, userToken, logout]);
+  }, [widgetId, logout]);
 
   useEffect(() => {
     fetchSchedules();
   }, [fetchSchedules]);
 
   useEffect(() => {
-    if (!wsRef?.current || !widgetId) return;
+    if (!wsRef?.current || !widgetId || !virtualPin) return;
     const targetWidgetId = widgetId.toString();
     const targetVirtualPin = virtualPin?.toLowerCase();
     const socket = wsRef.current;
@@ -201,7 +196,7 @@ const LEDControlWidget = ({
 
     socket.addEventListener("message", handler);
     return () => socket.removeEventListener("message", handler);
-  }, [wsRef, widgetId, deviceId, virtualPin, fetchSchedules, ledOn]);
+  }, [wsRef, widgetId, deviceId, virtualPin, fetchSchedules]);
 
   // --- ACTIONS ---
 
@@ -213,7 +208,7 @@ const LEDControlWidget = ({
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    if (!widgetId || !userToken) {
+    if (!widgetId) {
       Alert.alert("Error", "Missing data.");
       return;
     }
@@ -228,13 +223,9 @@ const LEDControlWidget = ({
     }
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/widgets/${widgetId}/state`,
-        { state: newState },
-        { headers: { Authorization: `Bearer ${userToken}` }, timeout: 10000 }
-      );
+      const res = await api.setWidgetState(widgetId, newState);
 
-      if (res.status !== 200 && !isUpdatingFromWS.current) {
+      if (!res && !isUpdatingFromWS.current) { // Assuming api service returns something on success
         setLedOn(currentState);
       }
     } catch (err) {
@@ -247,7 +238,7 @@ const LEDControlWidget = ({
   };
 
   const submitSchedule = async () => {
-    if (!widgetId || !userToken) return;
+    if (!widgetId) return;
     try {
       let dateObj;
       if (scheduleDate.includes("T")) {
@@ -266,15 +257,11 @@ const LEDControlWidget = ({
       }
       
       setSubmitting(true);
-      await axios.post(
-        `${API_BASE}/widgets/${widgetId}/schedule`,
-        {
-          state: scheduleState,
-          execute_at: dateObj.toISOString(),
-          label: scheduleLabel || undefined,
-        },
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      await api.createWidgetSchedule(widgetId, {
+        state: scheduleState,
+        execute_at: dateObj.toISOString(),
+        label: scheduleLabel || undefined,
+      });
       setScheduleModalVisible(false);
       setScheduleLabel("");
       fetchSchedules();
@@ -287,7 +274,7 @@ const LEDControlWidget = ({
   };
 
   const submitTimer = async () => {
-    if (!widgetId || !userToken) return;
+    if (!widgetId) return;
     const seconds = parseInt(timerSeconds, 10);
     if (!seconds || seconds <= 0) {
       Alert.alert("Invalid duration", "Please enter timer duration in seconds.");
@@ -295,15 +282,11 @@ const LEDControlWidget = ({
     }
     try {
       setSubmitting(true);
-      await axios.post(
-        `${API_BASE}/widgets/${widgetId}/timer`,
-        {
-          state: timerState,
-          duration_seconds: seconds,
-          label: timerLabel || undefined,
-        },
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      await api.createWidgetTimer(widgetId, {
+        state: timerState,
+        duration_seconds: seconds,
+        label: timerLabel || undefined,
+      });
       setTimerModalVisible(false);
       setTimerLabel("");
       fetchSchedules();
@@ -317,10 +300,7 @@ const LEDControlWidget = ({
 
   const cancelSchedule = async (scheduleId) => {
     try {
-      await axios.delete(
-        `${API_BASE}/widgets/${widgetId}/schedule/${scheduleId}`,
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
+      await api.cancelWidgetSchedule(widgetId, scheduleId);
       fetchSchedules();
     } catch (err) {
       Alert.alert("Error", "Failed to cancel schedule.");

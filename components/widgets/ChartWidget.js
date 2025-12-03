@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
-import { LineChart, ContributionGraph } from "react-native-chart-kit";
-import api from "../services/api";
+import { LineChart } from "react-native-chart-kit";
+import api from "../../services/api";
 
 const screenWidth = Dimensions.get("window").width;
-
-// Fit inside a 2-column draggable grid (safe margin)
-const CHART_WIDTH = screenWidth / 2 - 70;
-
+const CHART_WIDTH = screenWidth / 2 - 60;
 const CHART_HEIGHT = 120;
+
 const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
   const [chartData, setChartData] = useState(null);
   const [yAxisValues, setYAxisValues] = useState([]);
@@ -22,24 +20,19 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
     textSecondary: isDarkTheme ? "#9CA3AF" : "#475569",
   };
 
-  // Auto generate Y-axis
-  const generateYAxisTicks = (data, points = 4) => {
-    if (!data || data.length === 0) return [0, 50, 100];
+  // Generate correct Y-axis scale
+  const generateYAxisTicks = (data, ticks = 5) => {
+    const min = Math.min(...data);
+    const max = Math.max(...data);
 
-    const minVal = Math.min(...data);
-    const maxVal = Math.max(...data);
+    const diff = max - min || 1;
+    const step = diff / (ticks - 1);
 
-    if (minVal === maxVal) return [minVal - 1, minVal, minVal + 1].map(v => Number(v.toFixed(1)));
-
-    const range = maxVal - minVal;
-    const step = range > 0 ? range / (points - 1) : 1;
-    const ticks = [];
-
-    for (let i = 0; i < points; i++) {
-      ticks.push(Number((minVal + i * step).toFixed(1)));
+    const arr = [];
+    for (let i = 0; i < ticks; i++) {
+      arr.push((min + step * i).toFixed(1));
     }
-    // Return in descending order for rendering from top to bottom
-    return ticks.reverse();
+    return arr.reverse(); // top → bottom
   };
 
   useEffect(() => {
@@ -55,10 +48,11 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
         const history = await api.getTelemetryHistory(deviceId, config.key, "24h");
 
         if (!history || history.length === 0) {
-          setChartData({ labels: [], datasets: [{ data: [] }] });
+          setError("No Data");
           return;
         }
 
+        const values = history.map(h => Number(h.value));
         const labelsFull = history.map(h =>
           new Date(h.timestamp).toLocaleTimeString("en-US", {
             hour: "2-digit",
@@ -67,27 +61,19 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
           })
         );
 
-        const values = history.map(h => Number(h.value));
-
-        const simplifiedLabels = labelsFull.map((l, i) =>
-          i % Math.ceil(labelsFull.length / 5) === 0 ? l : ""
-        );
+        // Reduce X-axis labels (5 labels max)
+        const labelStep = Math.ceil(labelsFull.length / 5);
+        const xLabels = labelsFull.map((l, i) => (i % labelStep === 0 ? l : ""));
 
         setChartData({
-          labels: simplifiedLabels,
-          datasets: [
-            {
-              data: values,
-              strokeWidth: 2,
-              color: (opacity = 1) => `rgba(0, 217, 255, ${opacity})`,
-            },
-          ],
+          labels: xLabels,
+          datasets: [{ data: values, strokeWidth: 2 }],
         });
 
         setYAxisValues(generateYAxisTicks(values));
       } catch (err) {
-        console.log("Chart fetch error:", err);
-        setError("Could not load chart");
+        console.log("Chart Error:", err);
+        setError("Error loading chart");
       } finally {
         setLoading(false);
       }
@@ -99,29 +85,31 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
   const chartConfig = {
     backgroundGradientFrom: Colors.background,
     backgroundGradientTo: Colors.background,
-    color: (opacity = 1) => `rgba(120, 130, 150, ${opacity})`,
+    color: () => Colors.primary,
     decimalPlaces: 1,
     propsForDots: {
       r: "3",
       strokeWidth: "1",
       stroke: Colors.primary,
     },
+    propsForLabels: {
+      fontSize: 8,
+      fill: Colors.textSecondary,
+    }
   };
 
-  // Loading state
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: Colors.background, justifyContent: "center" }]}>
-        <ActivityIndicator color={Colors.primary} size="small" />
+      <View style={[styles.container, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="small" color={Colors.primary} />
       </View>
     );
   }
 
-  // Error / No data
-  if (error || !chartData || chartData.datasets[0].data.length === 0) {
+  if (error || !chartData) {
     return (
-      <View style={[styles.container, { backgroundColor: Colors.background, justifyContent: "center" }]}>
-        <Text style={{ color: Colors.textSecondary }}>{error || "No data"}</Text>
+      <View style={[styles.container, { backgroundColor: Colors.background }]}>
+        <Text style={{ color: Colors.textSecondary }}>{error}</Text>
       </View>
     );
   }
@@ -130,26 +118,28 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <Text style={[styles.title, { color: Colors.text }]}>{title}</Text>
 
-      <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-        {/* Y-axis ticks */}
-        <View style={[styles.yAxisContainer, { height: CHART_HEIGHT }]}>
-          {yAxisValues.map((v, i) => (
-            <Text key={i} style={{ color: Colors.textSecondary, fontSize: 10 }}>
+      <View style={{ flexDirection: "row", width: "100%" }}>
+        {/* Y-Axis Labels */}
+        <View style={[styles.yAxis, { height: CHART_HEIGHT }]}>
+          {yAxisValues.map((v, idx) => (
+            <Text key={idx} style={{ fontSize: 10, color: Colors.textSecondary }}>
               {v}
             </Text>
           ))}
         </View>
 
-
-        {/* Chart component */}
+        {/* Chart */}
         <LineChart
           data={chartData}
           width={CHART_WIDTH}
-          height={120}
+          height={CHART_HEIGHT}
           chartConfig={chartConfig}
-          withVerticalLabels={false} // Disable default Y-axis labels
+          withDots={true}
+          withShadow={false}
           withInnerLines={false}
           withOuterLines={false}
+          withVerticalLabels={true}
+          withHorizontalLabels={false}
           bezier
           style={styles.chart}
         />
@@ -160,7 +150,6 @@ const ChartWidget = ({ title, deviceId, config, isDarkTheme, lastUpdated }) => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     padding: 12,
     borderRadius: 12,
     justifyContent: "flex-start",
@@ -168,13 +157,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: "600",
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  yAxisContainer: {
-    marginRight: 6,
+  yAxis: {
     justifyContent: "space-between",
     alignItems: "flex-end",
-    paddingVertical: 10, // Adjust to align with chart's internal padding
+    marginRight: 4,
   },
   chart: {
     borderRadius: 12,

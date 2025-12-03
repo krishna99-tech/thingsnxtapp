@@ -1,6 +1,7 @@
 // screens/HomeScreen.js
 import React, { useContext, useState, useMemo, useCallback } from "react";
 import {
+  FlatList,
   View,
   Text,
   StyleSheet,
@@ -14,7 +15,6 @@ import {
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
-import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
 import {
   Zap,
@@ -107,7 +107,7 @@ const getDashboardGradient = (type, Colors) => {
   }
 };
 
-const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress, unreadCount }) => (
+const HomeHeader = React.memo(({ username, isDarkTheme, Colors, onNotificationPress, unreadCount }) => (
   <LinearGradient
     colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
     style={styles.header}
@@ -130,9 +130,9 @@ const HomeHeader = ({ username, isDarkTheme, Colors, onNotificationPress, unread
       </TouchableOpacity>
     </View>
   </LinearGradient>
-);
+));
 
-const DashboardCard = ({ dashboard, onPress, Colors }) => {
+const DashboardCard = React.memo(({ dashboard, onPress, Colors }) => {
   const gradientColors = getDashboardGradient(dashboard.type, Colors);
   return (
     <TouchableOpacity
@@ -160,9 +160,9 @@ const DashboardCard = ({ dashboard, onPress, Colors }) => {
       </LinearGradient>
     </TouchableOpacity>
   );
-};
+});
 
-const DeviceCard = ({ device, onPress, Colors }) => (
+const DeviceCard = React.memo(({ device, onPress, Colors }) => (
   <TouchableOpacity
     style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
     onPress={() => onPress(device)}
@@ -186,7 +186,7 @@ const DeviceCard = ({ device, onPress, Colors }) => (
       </View>
     )}
   </TouchableOpacity>
-);
+));
 
 const Shimmer = ({ children, style, isDarkTheme }) => {
   const shimmerAnimatedValue = React.useRef(new Animated.Value(-1)).current;
@@ -233,7 +233,7 @@ const Shimmer = ({ children, style, isDarkTheme }) => {
   );
 };
 
-const DashboardCardSkeleton = ({ Colors }) => (
+const DashboardCardSkeleton = React.memo(({ Colors }) => (
   <Shimmer style={[styles.dashboardCard, { backgroundColor: Colors.surfaceLight }]} isDarkTheme={Colors.background === "#0A0E27"}>
     <View style={styles.dashboardGradient}>
       <View style={styles.dashboardHeader}>
@@ -246,35 +246,45 @@ const DashboardCardSkeleton = ({ Colors }) => (
       </View>
     </View>
   </Shimmer>
-);
+));
+
+const DeviceCardSkeleton = React.memo(({ Colors }) => (
+  <Shimmer style={[styles.deviceCard, { backgroundColor: Colors.surfaceLight }]} isDarkTheme={Colors.background === "#0A0E27"}>
+    <View style={styles.deviceCardHeader}>
+      <View style={[styles.deviceIcon, { backgroundColor: Colors.surface }]} />
+    </View>
+    <View style={{ height: 16, width: '70%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5, marginBottom: 8 }} />
+    <View style={{ height: 12, width: '40%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+  </Shimmer>
+));
 
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const { username, devices = [], isDarkTheme, userToken, logout } = useContext(AuthContext);
+  const { username, devices = [], isDarkTheme, userToken, logout, isRefreshing: devicesLoading } = useContext(AuthContext);
   const [dashboards, setDashboards] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [dashboardsLoading, setDashboardsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const Colors = {
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    primaryDark: isDarkTheme ? "#00B5D4" : "#2563EB",
-    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-    statusOnline: "#00FF88",
-    statusOffline: "#FF3366",
-    statusWarning: "#FFB800",
-  };
+  const Colors = useMemo(() => ({
+      background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
+      surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+      surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
+      border: isDarkTheme ? "#252B4A" : "#E2E8F0",
+      primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
+      primaryDark: isDarkTheme ? "#00B5D4" : "#2563EB",
+      secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
+      success: isDarkTheme ? "#00FF88" : "#16A34A",
+      danger: isDarkTheme ? "#FF3366" : "#DC2626",
+      white: "#FFFFFF",
+      text: isDarkTheme ? "#FFFFFF" : "#1E293B",
+      textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
+      textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
+      statusOnline: "#00FF88",
+      statusOffline: "#FF3366",
+      statusWarning: "#FFB800",
+  }), [isDarkTheme]);
 
   const fetchDashboardsAndNotifications = async () => {
     if (!userToken) return;
@@ -289,8 +299,7 @@ export default function HomeScreen() {
       setDashboards(dashboardsData || []);
       setUnreadNotifications(notificationsData?.notifications?.length || 0);
     } catch (err) {
-      console.error("Home Screen fetch error:", err.response?.data || err.message);
-      if (err.response?.status === 401) logout();
+      console.error("Home Screen fetch error:", err.message); // API service will handle 401
     } finally {
       setDashboardsLoading(false);
     }
@@ -313,15 +322,29 @@ export default function HomeScreen() {
   }, [userToken]);
 
   // 📊 Stats
-  const onlineDevices = devices.filter((d) => d?.status === "online").length;
-  const offlineDevices = devices.filter((d) => d?.status === "offline").length;
-  const activeDevices = devices.filter(
-    (d) => d?.status === "online" && d?.isOn
-  ).length;
-
-  const recentDevices = useMemo(() => {
-    return devices.slice(0, 4); // Show up to 4 recent devices
+  const { onlineDevices, offlineDevices, activeDevices, recentDevices } = useMemo(() => {
+    const online = devices.filter((d) => d?.status === "online").length;
+    const offline = devices.filter((d) => d?.status === "offline").length;
+    const active = devices.filter((d) => d?.status === "online" && d?.isOn).length;
+    const recent = devices.slice(0, 4);
+    return { onlineDevices: online, offlineDevices: offline, activeDevices: active, recentDevices: recent };
   }, [devices]);
+
+  const renderDashboardItem = useCallback(({ item }) => (
+    <DashboardCard
+      dashboard={item}
+      onPress={(d) => navigation.navigate('Dashboard', { dashboard: d })}
+      Colors={Colors}
+    />
+  ), [navigation, Colors]);
+
+  const renderDeviceItem = useCallback(({ item }) => (
+    <DeviceCard
+      device={item}
+      Colors={Colors}
+      onPress={(d) => navigation.navigate("DeviceDetail", { deviceId: String(d.id || d._id) })}
+    />
+  ), [navigation, Colors]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]}>
@@ -346,33 +369,35 @@ export default function HomeScreen() {
           />
         }
       >
-        <View style={styles.statsContainer}>
-          <StatCard
-            colors={[Colors.primary, Colors.primaryDark]}
-            icon={<Activity size={24} color={Colors.white} />}
-            value={devices.length}
-            title="Total Devices"
-            isLarge
-          />
-          <StatCard
-            colors={[Colors.success, "#059669"]}
-            icon={<Wifi size={24} color={Colors.white} />}
-            value={onlineDevices}
-            title="Online"
-          />
-          <StatCard
-            colors={[Colors.secondary, "#DB2777"]}
-            icon={<Zap size={24} color={Colors.white} />}
-            value={activeDevices}
-            title="Active"
-          />
-          <StatCard
-            colors={[Colors.danger, "#C11B48"]}
-            icon={<WifiOff size={24} color={Colors.white} />}
-            value={offlineDevices}
-            title="Offline"
-          />
-        </View>
+        <HomeSection title="Overview" titleColor={Colors.text}>
+          <View style={styles.statsContainer}>
+            <StatCard
+              colors={[Colors.primary, Colors.primaryDark]}
+              icon={<Activity size={24} color={Colors.white} />}
+              value={devices.length}
+              title="Total Devices"
+              isLarge
+            />
+            <StatCard
+              colors={[Colors.success, "#059669"]}
+              icon={<Wifi size={24} color={Colors.white} />}
+              value={onlineDevices}
+              title="Online"
+            />
+            <StatCard
+              colors={[Colors.secondary, "#DB2777"]}
+              icon={<Zap size={24} color={Colors.white} />}
+              value={activeDevices}
+              title="Active"
+            />
+            <StatCard
+              colors={[Colors.danger, "#C11B48"]}
+              icon={<WifiOff size={24} color={Colors.white} />}
+              value={offlineDevices}
+              title="Offline"
+            />
+          </View>
+        </HomeSection>
 
         <HomeSection
           title="Dashboards"
@@ -381,27 +406,17 @@ export default function HomeScreen() {
           titleColor={Colors.text}
           linkColor={Colors.primary}
         >
-          <ScrollView
+          <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dashboardsScroll}
-          >
-            {dashboardsLoading ? (
-              <>
-                <DashboardCardSkeleton Colors={Colors} />
-                <DashboardCardSkeleton Colors={Colors} />
-              </>
-            ) : (
-              dashboards.map(dashboard => (
-                <DashboardCard
-                  key={dashboard._id}
-                  dashboard={dashboard}
-                  onPress={(d) => navigation.navigate('Dashboard', { dashboard: d })}
-                  Colors={Colors}
-                />
-              ))
-            )}
-          </ScrollView>
+            data={dashboardsLoading ? [{key: 's1'}, {key: 's2'}] : dashboards}
+            renderItem={dashboardsLoading ? () => <DashboardCardSkeleton Colors={Colors} /> : renderDashboardItem}
+            keyExtractor={(item, index) => item._id || `skeleton-${index}`}
+            ListEmptyComponent={
+              !dashboardsLoading ? <Text style={{color: Colors.textMuted, paddingLeft: 16}}>No dashboards yet.</Text> : null
+            }
+          />
         </HomeSection>
 
         <HomeSection
@@ -411,18 +426,17 @@ export default function HomeScreen() {
           titleColor={Colors.text}
           linkColor={Colors.primary}
         >
-          <View style={styles.devicesGrid}>
-            {recentDevices.map((device) => (
-              <DeviceCard
-                key={String(device.id || device._id)}
-                device={device}
-                Colors={Colors}
-                onPress={(d) =>
-                  navigation.navigate("DeviceDetail", { deviceId: String(device.id || device._id) })
-                }
-              />
-            ))}
-          </View>
+          <FlatList
+            scrollEnabled={false} // Disable scrolling as it's inside a ScrollView
+            contentContainerStyle={styles.devicesGrid}
+            data={devicesLoading && recentDevices.length === 0 ? [{key: 's1'}, {key: 's2'}] : recentDevices}
+            renderItem={devicesLoading && recentDevices.length === 0 ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
+            keyExtractor={(item, index) => String(item.id || item._id || `skeleton-${index}`)}
+            numColumns={2}
+            ListEmptyComponent={
+              !devicesLoading ? <Text style={{color: Colors.textMuted}}>No recent devices.</Text> : null
+            }
+          />
         </HomeSection>
       </ScrollView>
     </SafeAreaView>
@@ -483,9 +497,7 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: "row",
-    paddingHorizontal: CARD_PADDING,
     flexWrap: "wrap",
-    paddingTop: 20,
     gap: CARD_GAP,
   },
    section: {

@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "../constants/config";
+import { AuthContext } from "../context/AuthContext"; // We'll need this for logout
 
 const SHOULD_LOG = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_API_LOGS === "true";
 const debugLog = (...args) => {
@@ -11,6 +12,14 @@ const debugLog = (...args) => {
 class API {
   constructor() {
     this.baseUrl = BASE_URL;
+    this.isRefreshing = false;
+    this.failedQueue = [];
+    this.logoutCallback = null;
+  }
+
+  // Method to set the logout function from AuthContext
+  setLogoutCallback(logout) {
+    this.logoutCallback = logout;
   }
 
   // --- Core request handler ---
@@ -60,28 +69,51 @@ class API {
 
       // Error handling
       if (!response.ok) {
-        console.error("❌ API Error:", response.status, data);
-        // Create an error object that includes the status code
-        const error = new Error();
-        error.status = response.status;
-
-        if (data?.detail) {
-          if (Array.isArray(data.detail)) {
-            message =
-              data.detail
-                .map(
-                  (d) => `${d.loc?.join(".") || "Field"}: ${d.msg}`
-                )
-                .join("; ") || data.detail.join(", ");
-          } else {
-            error.message = data.detail;
+        // If we get a 401, try to refresh the token
+        if (response.status === 401 && !options._isRetry) {
+          debugLog("🔑 Token expired. Attempting refresh...");
+          try {
+            const { access_token, refresh_token } = await this.refreshToken();
+            await AsyncStorage.setItem("userToken", access_token);
+            if (refresh_token) {
+              await AsyncStorage.setItem("refreshToken", refresh_token);
+            }
+            debugLog("✅ Token refreshed. Retrying original request...");
+            // Retry the original request with the new token
+            return this.request(endpoint, { ...options, _isRetry: true });
+          } catch (refreshError) {
+            console.error("❌ Token refresh failed:", refreshError.message);
+            // If refresh fails, logout the user
+            if (this.logoutCallback) {
+              this.logoutCallback();
+            }
+            // Propagate a meaningful error
+            throw new Error("Session expired. Please log in again.");
           }
-        } else if (data?.error || data?.message) {
-          error.message = data.error || data.message;
         } else {
-          error.message = `HTTP ${response.status}`;
+          console.error("❌ API Error:", response.status, data);
+          // Create an error object that includes the status code
+          const error = new Error();
+          error.status = response.status;
+
+          if (data?.detail) {
+            if (Array.isArray(data.detail)) {
+              error.message =
+                data.detail
+                  .map(
+                    (d) => `${d.loc?.join(".") || "Field"}: ${d.msg}`
+                  )
+                  .join("; ") || data.detail.join(", ");
+            } else {
+              error.message = data.detail;
+            }
+          } else if (data?.error || data?.message) {
+            error.message = data.error || data.message;
+          } else {
+            error.message = `HTTP ${response.status}`;
+          }
+          throw error;
         }
-        throw error;
       }
 
       debugLog("✅ API Success:", data);
@@ -148,7 +180,7 @@ class API {
     if (data?.access_token) {
       debugLog("♻️ Token refreshed");
     }
-    return data;
+    return data; // Return the new tokens
   }
 
   // LOGOUT
@@ -165,7 +197,9 @@ class API {
 
   // DEVICES
   async getDevices() {
-    return this.request("/devices", { method: "GET" });
+    // The context expects the response to be an object like { devices: [...] }
+    const devicesArray = await this.request("/devices", { method: "GET" });
+    return { devices: devicesArray || [] };
   }
 
   async addDevice(deviceData) {
@@ -181,6 +215,13 @@ class API {
         // Type is optional, only include if provided
         ...(deviceData.type && { type: deviceData.type.trim() }),
       }),
+    });
+  }
+
+  async updateDevice(deviceId, deviceData) {
+    return this.request(`/devices/${deviceId}`, {
+      method: "PATCH", // Using PATCH for partial updates
+      body: JSON.stringify(deviceData),
     });
   }
 
@@ -227,6 +268,39 @@ class API {
     return this.request(`/widgets/${widgetId}`, { method: "DELETE" });
   }
 
+  // WIDGET STATE & SCHEDULES
+  async setWidgetState(widgetId, state) {
+    return this.request(`/widgets/${widgetId}/state`, {
+      method: "POST",
+      body: JSON.stringify({ state }),
+    });
+  }
+
+  async getWidgetSchedules(widgetId) {
+    return this.request(`/widgets/${widgetId}/schedule`, { method: "GET" });
+  }
+
+  async createWidgetSchedule(widgetId, scheduleData) {
+    return this.request(`/widgets/${widgetId}/schedule`, {
+      method: "POST",
+      body: JSON.stringify(scheduleData),
+    });
+  }
+
+  async createWidgetTimer(widgetId, timerData) {
+    return this.request(`/widgets/${widgetId}/timer`, {
+      method: "POST",
+      body: JSON.stringify(timerData),
+    });
+  }
+
+  async cancelWidgetSchedule(widgetId, scheduleId) {
+    return this.request(`/widgets/${widgetId}/schedule/${scheduleId}`, {
+      method: "DELETE",
+    });
+  }
+
+
   // NOTIFICATIONS
   async getNotifications(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -245,12 +319,90 @@ class API {
     return this.request(`/notifications/${notificationId}`, { method: "DELETE" });
   }
 
+  // --- Private SSE Stream Handler ---
+  async _stream(endpoint, onMessage, onError, onOpen) { // This should be a method of the class
+    const controller = new AbortController();
+    const token = await AsyncStorage.getItem("userToken");
+
+    if (!token) {
+      onError(new Error("No user token found for SSE stream."));
+      return controller;
+      const error = new Error(`No user token found for SSE stream at ${endpoint}.`);
+      if (onError) onError(error);
+      return controller; // Return controller to prevent crashes
+    }
+
+    try {
+      debugLog(`🔄 Connecting to SSE stream: ${endpoint}...`);
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`SSE connection failed with status ${response.status}`);
+      }
+
+      if (onOpen) onOpen();
+      debugLog(`✅ SSE stream connected: ${endpoint}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      const readStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || controller.signal.aborted) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data:")) {
+              const dataStr = line.substring(5).trim();
+              try {
+                if (dataStr) onMessage(JSON.parse(dataStr));
+              } catch (parseErr) {
+                console.error("Error parsing SSE data:", parseErr);
+                if (onError) onError(new Error("Error parsing SSE data"));
+              }
+            }
+          }
+        }
+      };
+      readStream().catch((err) => {
+        if (onError) onError(err);
+      });
+    } catch (err) {
+      if (onError) onError(err);
+    }
+    return controller;
+  }
+
+  // --- Public SSE Methods ---
+  async streamNotifications(onMessage, onError, onOpen) {
+    return this._stream("/notifications/stream", onMessage, onError, onOpen);
+  }
+
+  async streamEvents(onMessage, onError, onOpen) {
+    return this._stream("/events/stream", onMessage, onError, onOpen);
+  }
+
   // USER PROFILE
   async updateUser(userData) {
     return this.request("/me", {
       method: "PUT",
       body: JSON.stringify(userData),
     });
+  }
+
+  // DELETE ACCOUNT
+  async deleteAccount() {
+    return this.request("/me", { method: "DELETE" });
   }
 
 // Add this in your API class

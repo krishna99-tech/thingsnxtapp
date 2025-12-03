@@ -21,13 +21,28 @@ import {
   Info,
   ChevronRight,
   LogOut,
+  Bell,
+  Wifi,
+  Database, // For Data Export
+  Trash2,   // For Clear Cache
+  Palette,  // For Appearance
 } from "lucide-react-native";
-import { Bell } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MenuItem from "../components/settings/MenuItem";
+import { showToast } from "../components/Toast";
 
 export default function SettingsScreen() {
-  const { logout, username, isDarkTheme, toggleTheme } = useContext(AuthContext);
+  const {
+    logout,
+    username,
+    email,
+    isDarkTheme,
+    showAlert,
+    toggleTheme,
+  } = useContext(AuthContext);
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
@@ -75,31 +90,46 @@ export default function SettingsScreen() {
   };
 
   const handleComingSoon = (title) => {
-    setAlertConfig({
-      type: 'warning',
-      title: title,
-      message: "Feature coming soon 🚀",
-      buttons: [{ text: "Got it!", onPress: () => setAlertVisible(false) }],
-    });
-    setAlertVisible(true);
+    showToast.info("Coming Soon", `${title} feature is under development.`);
   };
 
   const handleProfilePress = () => {
     navigation.navigate("Profile");
   };
 
+  // Reusable Section Component
+  const SettingsSection = ({ title, children }) => (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>{title}</Text>
+      {children}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <LinearGradient
         colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 20 }]} // Adjust padding for safe area
       >
         <View style={styles.profileHeader}>
-          <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}><User size={32} color={Colors.primary} /></View>
-          <View>
-            <Text style={[styles.profileName, { color: Colors.text }]}>{username || 'User'}</Text>
-            <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>{`${username?.toLowerCase() || 'user'}@thingsnxt.com`}</Text>
+          {/* Profile Info (Left Side) */}
+          <View style={styles.profileInfoContainer}>
+            <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}>
+              <User size={32} color={Colors.primary} />
+            </View>
+            <View>
+              <Text style={[styles.profileName, { color: Colors.text }]}>
+                {username || 'User'}
+              </Text>
+              <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>
+                {email || 'user@example.com'}
+              </Text>
+            </View>
           </View>
+          {/* Logout Button (Right Side) */}
+          <TouchableOpacity style={styles.headerLogoutButton} onPress={handleLogout}>
+            <LogOut size={24} color={Colors.danger} />
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -107,125 +137,95 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Account</Text>
+        {/* Account Section */}
+        <SettingsSection title="Account">
+          <MenuItem
+            icon={{ component: <User size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
+            title="Profile"
+            subtitle={username || "Edit your personal information"}
+            onPress={handleProfilePress}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+          <MenuItem
+            icon={{ component: <Shield size={20} color={Colors.success} />, bgColor: Colors.success + "20" }}
+            title="Security"
+            subtitle="Change your password"
+            onPress={() => navigation.navigate('ForgotPassword')}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+        </SettingsSection>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={handleProfilePress}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.primary + "20" }]}>
-                <User size={20} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Profile</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>
-                  {username || "Edit your personal information"}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
+        {/* General Section */}
+        <SettingsSection title="General">
+          <MenuItem
+            icon={{ component: <Smartphone size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" }}
+            title="Manage Devices"
+            subtitle="View and organize your devices"
+            onPress={() => navigation.navigate("Devices")}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+          <MenuItem
+            icon={{ component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }}
+            title="Notifications"
+            subtitle="View alerts and system messages"
+            onPress={() => navigation.navigate("Notifications")}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+        </SettingsSection>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Notifications")}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.danger + "20" }]}>
-                <Bell size={20} color={Colors.danger} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Notifications</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>Manage push notifications</Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
+        {/* Preferences */}
+        <SettingsSection title="Preferences">
+          <MenuItem
+            icon={{ component: <Palette size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" }}
+            title="Appearance"
+            subtitle={isDarkTheme ? "Dark Mode" : "Light Mode"}
+            rightComponent={{ type: 'switch', value: isDarkTheme, onValueChange: toggleTheme, trackColor: Colors.primary }}
+            Colors={Colors}
+          />
+        </SettingsSection>
 
+        {/* Data & Privacy */}
+        <SettingsSection title="Data & Privacy">
+          <MenuItem
+            icon={{ component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
+            title="Data Export"
+            subtitle="Download sensor data logs"
+            onPress={() => handleComingSoon("Data Export")}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+          <MenuItem
+            icon={{ component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }}
+            title="Clear Cache"
+            subtitle="Clear temporary app data"
+            onPress={() => handleComingSoon("Clear Cache")}
+            Colors={Colors}
+          />
+        </SettingsSection>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Security")}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.success + "20" }]}>
-                <Shield size={20} color={Colors.success} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Security</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>Password and authentication</Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Preferences</Text>
-
-          <View style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.warning + "20" }]}>
-                {isDarkTheme ? <Moon size={20} color={Colors.warning} /> : <Sun size={20} color={Colors.warning} />}
-              </View>
-              <View style={styles.menuItemTextContainer}>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Dark Mode</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>
-                  {isDarkTheme ? "Enabled" : "Disabled"}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={isDarkTheme}
-              onValueChange={toggleTheme}
-              trackColor={{ false: Colors.surfaceLight, true: Colors.primary }}
-              thumbColor={Colors.white}
-            />
-          </View>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Connected Devices")}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.secondary + "20" }]}>
-                <Smartphone size={20} color={Colors.secondary} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Connected Devices</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>Manage connected devices</Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Support</Text>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => openLink("https://thingsnxt.vercel.app/support")}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.primary + "20" }]}>
-                <HelpCircle size={20} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Help Center</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>FAQs and support articles</Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => openLink("https://thingsnxt.vercel.app/")}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: Colors.success + "20" }]}>
-                <Info size={20} color={Colors.success} />
-              </View>
-              <View>
-                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>About</Text>
-                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>App version and information</Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <TouchableOpacity style={[styles.logoutButton, { backgroundColor: Colors.surface, borderColor: Colors.danger }]} onPress={handleLogout}>
-            <LogOut size={20} color={Colors.danger} />
-            <Text style={[styles.logoutText, { color: Colors.danger }]}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Support */}
+        <SettingsSection title="Support">
+          <MenuItem
+            icon={{ component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
+            title="Help Center"
+            subtitle="FAQs and support articles"
+            onPress={() => openLink("https://thingsnxt.vercel.app/support")}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+          <MenuItem
+            icon={{ component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" }}
+            title="About"
+            subtitle="App version and information"
+            onPress={() => openLink("https://thingsnxt.vercel.app/")}
+            rightComponent={{ type: 'chevron' }}
+            Colors={Colors}
+          />
+        </SettingsSection>
 
         <Text style={[styles.version, { color: Colors.textMuted }]}>Version 1.0.0</Text>
       </ScrollView>
@@ -244,12 +244,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 70,
+    // paddingTop will be set dynamically using insets.top
     paddingBottom: 24,
     paddingHorizontal: 20,
   },
   profileHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between', // Distribute space between profile info and logout button
+    alignItems: 'center',
+  },
+  profileInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
     alignItems: 'center',
     gap: 16,
   },
@@ -268,8 +275,9 @@ const styles = StyleSheet.create({
   profileEmail: {
     fontSize: 14,
   },
-  scrollView: {
-    flex: 1,
+  headerLogoutButton: {
+    padding: 8, // Add some padding for easier tapping
+    // No specific background, let it be transparent
   },
   scrollContent: {
     padding: 20,
@@ -285,52 +293,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 12,
     paddingHorizontal: 4,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-  },
-  menuItemLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 12,
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuItemTextContainer: {
-    flex: 1,
-  },
-  menuItemTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  menuItemSubtitle: {
-    fontSize: 13,
-  },
-  logoutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: "600",
   },
   version: {
     fontSize: 12,

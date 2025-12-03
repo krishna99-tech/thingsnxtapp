@@ -1,9 +1,9 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useState,
   useRef,
-  useEffect,
   useCallback,
 } from "react";
 import { View, ActivityIndicator } from "react-native";
@@ -11,7 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL, WS_URL } from "../constants/config";
 import API from "../services/api";
-import { showToast } from "../components/Toast";
+import { color } from "framer-motion";
 
 export const AuthContext = createContext(null);
 
@@ -31,15 +31,14 @@ export const AuthProvider = ({ children }) => {
   const [userToken, setUserToken] = useState(null);
   const [username, setUsername] = useState(null);
   const [email, setEmail] = useState(null);
+  const [user, setUser] = useState(null); // Add state for the full user object
   const [devices, setDevices] = useState([]);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const wsRef = useRef(null);
-  const sseAbortController = useRef(null); // For aborting SSE fetch
   const isReconnecting = useRef(true); // Flag to control WS reconnection
-  
   const messageListeners = useRef(new Set());
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
@@ -53,11 +52,13 @@ export const AuthProvider = ({ children }) => {
         const token = await AsyncStorage.getItem("userToken");
         const storedUser = await AsyncStorage.getItem("username");
         const storedEmail = await AsyncStorage.getItem("email");
+        const storedFullUser = await AsyncStorage.getItem("user");
         const storedTheme = await AsyncStorage.getItem("theme");
 
         if (storedTheme) {
           setIsDarkTheme(storedTheme === "dark");
         }
+        if (storedFullUser) setUser(JSON.parse(storedFullUser));
 
         if (token && storedUser && storedEmail) {
           setUserToken(token);
@@ -117,7 +118,7 @@ export const AuthProvider = ({ children }) => {
   // ====================================
   // 🔐 LOGIN
   // ====================================
-  const login = async (usernameInput, passwordInput, navigation) => {
+  const login = async (usernameInput, passwordInput) => {
     try {
       if (!usernameInput?.trim() || !passwordInput)
         throw new Error("Username/email and password required");
@@ -131,22 +132,18 @@ export const AuthProvider = ({ children }) => {
           "username", data.user?.username || usernameInput.trim()
         );
         await AsyncStorage.setItem("email", data.user?.email || "");
+        await AsyncStorage.setItem("user", JSON.stringify(data.user || {}));
 
         setUserToken(data.access_token);
         setUsername(data.user?.username || usernameInput.trim());
         setEmail(data.user?.email || "");
+        setUser(data.user || {});
 
         // Ensure devices are fetched BEFORE connecting to WebSocket
         await fetchDevices(data.access_token);
         connectWebSocket(data.access_token);
 
-        showAlert({
-          type: 'success',
-          title: "Login Success",
-          message: `Welcome ${data.user?.username || ""}!`,
-          buttons: [{ text: "Continue" }]
-        });
-        navigation?.reset({ index: 0, routes: [{ name: "MainTabs" }] });
+        return data; // Return success data to the caller
       } else {
         throw new Error(data?.detail || "Invalid credentials");
       }
@@ -155,6 +152,7 @@ export const AuthProvider = ({ children }) => {
       showAlert({
         type: 'error', title: "Login Failed", message: err.message || "Check your credentials", buttons: [{ text: "OK" }]
       });
+      return null; // Return null on failure
     }
   };
 
@@ -168,9 +166,11 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.setItem("userToken", data.access_token);
         await AsyncStorage.setItem("username", data.user?.username);
         await AsyncStorage.setItem("email", data.user?.email);
+        await AsyncStorage.setItem("user", JSON.stringify(data.user || {}));
         setUserToken(data.access_token);
         setUsername(data.user?.username);
         setEmail(data.user?.email);
+        setUser(data.user || {});
         await fetchDevices(data.access_token);
         connectWebSocket(data.access_token); // Use WebSocket for consistency
         showAlert({
@@ -190,6 +190,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ====================================
+  // 🗑️ DELETE ACCOUNT
+  // ====================================
+  const deleteAccount = async () => {
+    try {
+      await API.deleteAccount();
+      showAlert({
+        type: 'success', title: "Account Deleted", message: "Your account has been successfully deleted.", buttons: [{ text: "OK", onPress: logout }]
+      });
+      // The logout function will handle clearing state and storage
+    } catch (err) {
+      console.error("Delete account error:", err);
+      showAlert({
+        type: 'error', title: "Deletion Failed", message: err.message || "Could not delete your account.", buttons: [{ text: "OK" }]
+      });
+    }
+  };
+  // ====================================
   // 🚪 LOGOUT
   // ====================================
   const logout = async () => {
@@ -197,27 +214,26 @@ export const AuthProvider = ({ children }) => {
       await API.logout();
       isReconnecting.current = false; // Prevent WS from reconnecting on logout
       wsRef.current?.close(4000, "User logged out"); // Use a custom code for intentional closure
-      // Abort any ongoing SSE connection
-      if (sseAbortController.current) {
-        sseAbortController.current.abort();
-        sseAbortController.current = null;
-      }
     } catch (err) {
       console.error("Logout API error:", err);
     } finally {
       await AsyncStorage.multiRemove([
         "userToken",
-        "username",
-        "email",
-        "refreshToken",
+        "refreshToken", // And the refresh token
+        "user",
       ]);
       setUserToken(null);
-      setUsername(null);
-      setEmail(null);
+      // Keep username/email for next login screen
       setDevices([]);
-    };
+    } 
     wsRef.current = null;
   };
+
+  // Connect the API service to the AuthContext's logout function.
+  // This allows the API service to trigger a global logout on auth failure.
+  useEffect(() => {
+    API.setLogoutCallback(logout);
+  }, [logout]);
 
   // ====================================
   // 🌗 THEME
@@ -242,7 +258,7 @@ export const AuthProvider = ({ children }) => {
     setIsRefreshing(true);
     try {
       const data = await API.getDevices();
-      if (Array.isArray(data)) {
+      if (Array.isArray(data?.devices)) { // Assuming API returns { devices: [...] }
         setDevices((prevDevices) => {
           const prevDevicesMap = new Map(
             prevDevices.map((d) => {
@@ -253,7 +269,7 @@ export const AuthProvider = ({ children }) => {
             }).flat()
           );
           
-          const updatedDevices = data.map((serverDev) => {
+          const updatedDevices = data.devices.map((serverDev) => {
             // Ensure we have both _id and id for compatibility
             const serverId = String(serverDev._id || serverDev.id);
             const local = prevDevicesMap.get(serverId);
@@ -363,6 +379,10 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Device name cannot be empty");
       }
       // Assuming you have an API.updateDevice method in your services
+      if (typeof API.updateDevice !== 'function') {
+        console.warn("API.updateDevice is not implemented. Skipping API call.");
+        return;
+      }
       const updatedDevice = await API.updateDevice(deviceId, deviceData);
       if (updatedDevice) {
         setDevices((prev) =>
@@ -413,6 +433,7 @@ export const AuthProvider = ({ children }) => {
         if (updatedUser.username) {
           setUsername(updatedUser.username);
           await AsyncStorage.setItem("username", updatedUser.username);
+          setUser(prev => ({ ...prev, username: updatedUser.username }));
         }
         if (updatedUser.email) {
           setEmail(updatedUser.email);
@@ -472,87 +493,6 @@ export const AuthProvider = ({ children }) => {
       console.error("Fetch telemetry error:", err);
       return {};
     };
-  };
-
-  // ====================================
-  // ⚡ SERVER-SENT EVENTS (SSE)
-  // ====================================
-  const connectSSE = async (token) => { // Make connectSSE an async function
-    if (!token) return;
-
-    // Prevent duplicate connections
-    if (sseAbortController.current) {
-      console.log("SSE connection already active. Aborting old one.");
-      sseAbortController.current.abort();
-    }
-
-    const controller = new AbortController();
-    sseAbortController.current = controller;
-
-    // ✅ Define the message handler inside the connection function
-    // This ensures it has access to the latest state setters.
-    const handleSSEMessage = (msg) => {
-      handleRealtimeMessage(msg);
-    };
-
-    // Move the logic directly into connectSSE
-    try {
-      console.log("🔄 Connecting to SSE stream...");
-      const response = await fetch(`${BASE_URL}/events/stream`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "text/event-stream",
-        },
-        signal: controller.signal, // Pass the abort signal to fetch
-      });
-
-      if (!response.ok) {
-        throw new Error(`SSE connection failed: ${response.status}`);
-      }
-
-      console.log("✅ SSE stream connected");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      // Process the stream
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log("SSE stream finished.");
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data:")) {
-            try {
-              const dataStr = line.substring(5).trim();
-              if (dataStr) {
-                const msg = JSON.parse(dataStr);
-                handleSSEMessage(msg);
-              }
-            } catch (parseErr) {
-              console.error("❌ Error parsing SSE data:", parseErr, "Raw data:", line);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        console.log("SSE connection aborted successfully.");
-        return; // This is an expected error on logout, so we exit gracefully.
-      }
-      console.error("❌ SSE connection error:", err);
-      // Clean up before retrying
-      if (sseAbortController.current === controller) {
-        sseAbortController.current = null;
-      }
-      // Reconnect after a delay if not aborted
-      setTimeout(() => connectSSE(token), 5000);
-    }
   };
 
   // ====================================
@@ -837,18 +777,20 @@ const connectWebSocket = (token) => {
   // ====================================
   // 🌍 CONTEXT PROVIDER VALUE
   // ====================================
-  useEffect(() => {
-    if (devices && __DEV__) {
-      console.log("[CTX] Devices state:", devices.map(d => ({ 
-        id: d.id || d._id, 
-        _id: d._id,
-        name: d.name,
-        status: d.status,
-        hasTelemetry: !!d.telemetry,
-        telemetryKeys: d.telemetry ? Object.keys(d.telemetry) : []
-      })));
-    }
-  }, [devices]);
+  // This useEffect is for debugging purposes to see the state of devices when it changes.
+  // By adding `devices` to the dependency array, it will only run when the devices array is updated.
+  // useEffect(() => {
+  //   if (devices && __DEV__) {
+  //     console.log("[CTX] Devices state:", devices.map(d => ({ 
+  //       id: d.id || d._id, 
+  //       _id: d._id,
+  //       name: d.name,
+  //       status: d.status,
+  //       hasTelemetry: !!d.telemetry,
+  //       telemetryKeys: d.telemetry ? Object.keys(d.telemetry) : []
+  //     })));
+  //   }
+  // }, [devices]);
 
   // While the app is restoring the session from storage, show a loading screen.
   // This prevents the rest of the app from rendering with incomplete auth data.
@@ -868,16 +810,17 @@ const connectWebSocket = (token) => {
           userToken,
           username,
           email,
+          user,
           devices,
           addDevice,
           updateDevice,
           deleteDevice,
+          deleteAccount,
           fetchDevices,
           updateUser,
           handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
           fetchTelemetry,
-          connectWebSocket,
-          connectSSE,
+          connectWebSocket, // Keep for potential manual reconnects
           login,
           signup,
           logout,

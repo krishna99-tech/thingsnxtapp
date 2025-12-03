@@ -138,8 +138,7 @@ export default function MainDashboardScreen() {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setDashboards(data || []);
     } catch (err) {
-      console.error("Dashboard fetch error:", err.response?.data || err.message);
-      if (err.response?.status === 401) logout();
+      console.error("Dashboard fetch error:", err.message); // API service will handle 401
       setAlertConfig({
         type: 'error',
         title: "Error",
