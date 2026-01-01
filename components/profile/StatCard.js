@@ -1,70 +1,57 @@
-// StatCard.jsx - UPDATED with loading support
-import React, { useMemo } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+// StatCard.js - Static version
+import React from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-// Safe hex + opacity utility
-const alpha = (hex, opacity) => {
-  const o = Math.round(opacity * 255).toString(16).padStart(2, "0");
-  return hex + o;
-};
-
-const StatCard = ({ 
-  icon, 
-  value, 
-  label, 
-  colors, 
-  isDarkTheme, 
-  loading = false 
-}) => {
-  // theme text colors
-  const ThemeColors = useMemo(
-    () => ({
-      text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-      textSecondary: isDarkTheme ? "#A8ACC5" : "#6B7280",
-      fallback: isDarkTheme
-        ? ["#1A1F3A", "#0F1229"]
-        : ["#FFFFFF", "#F1F5F9"],
-    }),
-    [isDarkTheme]
-  );
-
-  // Gradient safety
-  const safeColors =
-    Array.isArray(colors) &&
-    colors.length === 2 &&
-    colors.every((c) => typeof c === "string" && c.startsWith("#"))
-      ? colors
-      : ThemeColors.fallback;
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <LinearGradient colors={safeColors} style={styles.card}>
-          <View style={styles.iconWrapper}>
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
-          </View>
-          <Text style={[styles.value, { color: ThemeColors.text }]}>--</Text>
-          <Text style={[styles.label, { color: ThemeColors.textSecondary }]}>
+const StatCard = ({ icon, value, label, colors, isDarkTheme, loading, style }) => {
+  // Fallback colors to prevent gradient errors
+  const gradientColors = colors && colors.length >= 2 ? colors : ['#FFFFFF', '#FFFFFF'];
+  
+  return (
+    <View style={[
+      styles.container, 
+      { 
+        shadowColor: isDarkTheme ? "#000" : "#64748B",
+        backgroundColor: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+        borderColor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
+      },
+      style // Support for flexBasis or margins passed from parent
+    ]}>
+      <LinearGradient
+        colors={gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradient}
+      >
+        <View style={[
+          styles.iconWrapper, 
+          { backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }
+        ]}>
+          {icon}
+        </View>
+        
+        <View style={styles.textContainer}>
+          {loading ? (
+            <ActivityIndicator 
+              size="small" 
+              color={isDarkTheme ? "#00D9FF" : "#3B82F6"} 
+              style={styles.loader} 
+            />
+          ) : (
+            <Text 
+              style={[styles.value, { color: isDarkTheme ? "#FFFFFF" : "#1E293B" }]} 
+              numberOfLines={1}
+            >
+              {value}
+            </Text>
+          )}
+          <Text 
+            style={[styles.label, { color: isDarkTheme ? "#8B91A7" : "#64748B" }]} 
+            numberOfLines={1}
+          >
             {label}
           </Text>
-        </LinearGradient>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <LinearGradient colors={safeColors} style={styles.card}>
-        <View style={styles.iconWrapper}>{icon}</View>
-
-        <Text style={[styles.value, { color: ThemeColors.text }]}>
-          {value}
-        </Text>
-
-        <Text style={[styles.label, { color: ThemeColors.textSecondary }]}>
-          {label}
-        </Text>
+        </View>
       </LinearGradient>
     </View>
   );
@@ -72,40 +59,46 @@ const StatCard = ({
 
 const styles = StyleSheet.create({
   container: {
-    width: "48%",
-    borderRadius: 16,
-    marginBottom: 12,
+    width: '48%', // Default width for grid layout
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
   },
-  
-  card: {
-    flex: 1,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    justifyContent: "space-between",
+  gradient: {
+    padding: 16,
+    borderRadius: 20,
+    height: 120, // Slightly more compact
+    justifyContent: 'space-between',
   },
-
   iconWrapper: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
+  textContainer: {
+    marginTop: 8,
+  },
   value: {
-    fontSize: 24,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: '700',
     marginBottom: 2,
+    letterSpacing: -0.5,
   },
-
   label: {
-    fontSize: 14,
-    opacity: 0.9,
-    fontWeight: "500",
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
+  loader: {
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+    marginTop: 4,
+  }
 });
 
-export default React.memo(StatCard);
+export default StatCard;

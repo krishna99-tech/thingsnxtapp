@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -37,12 +37,15 @@ import {
   Settings,
   Zap,
   FileText,
+  Link,
+  Sun,
+  Moon,
+  X,
 } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MenuItem from "../components/settings/MenuItem";
 import { showToast } from "../components/Toast";
-import { getThemeColors } from "../utils/theme";
 import api from "../services/api";
 
 export default function SettingsScreen() {
@@ -79,12 +82,30 @@ export default function SettingsScreen() {
   const [dashboardCount, setDashboardCount] = useState(0);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // Use centralized theme utility
-  const Colors = getThemeColors(isDarkTheme);
+  // Theme Constants
+  const Colors = useMemo(() => ({
+    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
+    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
+    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
+    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
+    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
+    success: isDarkTheme ? "#00FF88" : "#16A34A",
+    warning: isDarkTheme ? "#FFB800" : "#F59E0B",
+    danger: isDarkTheme ? "#FF3366" : "#DC2626",
+    white: "#FFFFFF",
+    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
+    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
+    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
+  }), [isDarkTheme]);
 
   // Load dashboard count
   React.useEffect(() => {
     const loadDashboards = async () => {
+      if (!user) {
+        setDashboardCount(0);
+        return;
+      }
       try {
         setLoadingStats(true);
         const dashboards = await api.getDashboards();
@@ -96,15 +117,13 @@ export default function SettingsScreen() {
       }
     };
     loadDashboards();
-  }, []);
+  }, [user]);
 
   // Update local state when user context updates
   React.useEffect(() => {
-    if (user?.notification_settings) {
-      setNotificationsEnabled(user.notification_settings.enabled ?? true);
-      setEmailNotifications(user.notification_settings.email ?? true);
-      setPushNotifications(user.notification_settings.push ?? true);
-    }
+    setNotificationsEnabled(user?.notification_settings?.enabled ?? true);
+    setEmailNotifications(user?.notification_settings?.email ?? true);
+    setPushNotifications(user?.notification_settings?.push ?? true);
   }, [user]);
 
   const handleLogout = () => {
@@ -219,7 +238,7 @@ export default function SettingsScreen() {
   );
 
   // ⭐ Refactored Menu Structure
-  const menuSections = [
+  const menuSections = useMemo(() => [
     {
       title: "Account",
       items: [
@@ -304,6 +323,18 @@ export default function SettingsScreen() {
       ],
     },
     {
+      title: "Integrations",
+      items: [
+        {
+          icon: { component: <Link size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" },
+          title: "Connected Apps",
+          subtitle: "Manage third-party services",
+          onPress: () => navigation.navigate("ConnectedApps"),
+          rightComponent: { type: 'chevron' },
+        },
+      ],
+    },
+    {
       title: "Data Management",
       items: [
         { 
@@ -340,7 +371,7 @@ export default function SettingsScreen() {
         },
       ],
     },
-  ];
+  ], [Colors, user, username, devices, dashboardCount, themePreference, selectedLanguage, notificationsEnabled]);
 
 
   // Reusable Section Component
@@ -450,6 +481,12 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <TouchableOpacity 
+              style={styles.modalCloseButton} 
+              onPress={() => setExportModalVisible(false)}
+            >
+              <X size={24} color={Colors.textSecondary} />
+            </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Export Sensor Data</Text>
             <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
               Select a time range for the data you want to export.
@@ -479,13 +516,6 @@ export default function SettingsScreen() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
-                onPress={() => setExportModalVisible(false)}
-                disabled={isExporting}
-              >
-                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: Colors.primary }, isExporting && { opacity: 0.7 }]}
                 onPress={handleExportConfirm}
                 disabled={isExporting}
@@ -510,37 +540,50 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: Colors.text }]}>Appearance</Text>
-            
-            <View style={{ gap: 8, marginBottom: 20 }}>
-              {[
-                { id: 'system', label: 'System Default' },
-                { id: 'light', label: 'Light Mode' },
-                { id: 'dark', label: 'Dark Mode' },
-              ].map((option) => (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[
-                    styles.rangeOption, 
-                    { flexDirection: 'row', justifyContent: 'space-between', borderColor: Colors.border, backgroundColor: Colors.surfaceLight },
-                    themePreference === option.id && { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' }
-                  ]}
-                  onPress={() => handleThemeSelect(option.id)}
-                >
-                  <Text style={[styles.rangeText, { color: Colors.text }, themePreference === option.id && { color: Colors.primary }]}>
-                    {option.label}
-                  </Text>
-                  {themePreference === option.id && <Check size={20} color={Colors.primary} />}
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+            <TouchableOpacity 
+              style={styles.modalCloseButton} 
               onPress={() => setThemeModalVisible(false)}
             >
-              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Close</Text>
+              <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Appearance</Text>
+            
+            <View style={styles.themeGrid}>
+              {[
+                { id: 'light', label: 'Light', icon: Sun },
+                { id: 'dark', label: 'Dark', icon: Moon },
+                { id: 'system', label: 'System', icon: Smartphone },
+              ].map((option) => {
+                const Icon = option.icon;
+                const isActive = themePreference === option.id;
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.themeCard,
+                      { 
+                        backgroundColor: Colors.surfaceLight,
+                        borderColor: isActive ? Colors.primary : Colors.border 
+                      },
+                      isActive && { backgroundColor: Colors.primary + '10' }
+                    ]}
+                    onPress={() => handleThemeSelect(option.id)}
+                  >
+                    <View style={[styles.themeIconContainer, isActive && { backgroundColor: Colors.primary + '20' }]}>
+                      <Icon size={28} color={isActive ? Colors.primary : Colors.textSecondary} />
+                    </View>
+                    <Text style={[styles.themeLabel, { color: isActive ? Colors.primary : Colors.text }]}>
+                      {option.label}
+                    </Text>
+                    {isActive && (
+                      <View style={[styles.activeBadge, { backgroundColor: Colors.primary }]}>
+                        <Check size={10} color="#FFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
       </Modal>
@@ -554,6 +597,12 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <TouchableOpacity 
+              style={styles.modalCloseButton} 
+              onPress={() => setLanguageModalVisible(false)}
+            >
+              <X size={24} color={Colors.textSecondary} />
+            </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Language</Text>
             
             <View style={{ gap: 8, marginBottom: 20 }}>
@@ -578,13 +627,6 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-
-            <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
-              onPress={() => setLanguageModalVisible(false)}
-            >
-              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Close</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -598,6 +640,12 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <TouchableOpacity 
+              style={styles.modalCloseButton} 
+              onPress={() => setNotificationsModalVisible(false)}
+            >
+              <X size={24} color={Colors.textSecondary} />
+            </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Notification Settings</Text>
             
             <View style={{ gap: 16, marginBottom: 20 }}>
@@ -651,12 +699,6 @@ export default function SettingsScreen() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
-                onPress={() => setNotificationsModalVisible(false)}
-              >
-                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
                 onPress={handleNotificationsSave}
                 disabled={isSavingNotifications}
@@ -681,6 +723,12 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <TouchableOpacity 
+              style={styles.modalCloseButton} 
+              onPress={() => setPrivacyModalVisible(false)}
+            >
+              <X size={24} color={Colors.textSecondary} />
+            </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Privacy Settings</Text>
             
             <View style={{ gap: 16, marginBottom: 20 }}>
@@ -716,12 +764,6 @@ export default function SettingsScreen() {
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
-                onPress={() => setPrivacyModalVisible(false)}
-              >
-                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
                 onPress={handlePrivacySave}
@@ -936,5 +978,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     opacity: 0.85,
+  },
+  themeGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  themeCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    borderWidth: 2,
+    gap: 12,
+  },
+  themeIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  themeLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  activeBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 5,
+    padding: 4,
   },
 });

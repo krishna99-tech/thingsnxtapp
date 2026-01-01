@@ -13,6 +13,7 @@ import {
   UIManager,
   LayoutAnimation,
   Animated,
+  RefreshControl,
   KeyboardAvoidingView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient"; // Keep this for the header and card gradients
@@ -85,6 +86,7 @@ export default function MainDashboardScreen() {
 
   const [dashboards, setDashboards] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -129,7 +131,7 @@ export default function MainDashboardScreen() {
   };
 
   // 🔹 Fetch dashboards
-  const fetchDashboards = async () => {
+  const fetchDashboards = async (showLoading = true) => {
     if (!userToken) {
       setAlertConfig({
         type: 'error',
@@ -140,7 +142,7 @@ export default function MainDashboardScreen() {
       return;
     }
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const data = await api.getDashboards();
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setDashboards(data || []);
@@ -154,7 +156,7 @@ export default function MainDashboardScreen() {
       });
       setAlertVisible(true);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -165,6 +167,12 @@ export default function MainDashboardScreen() {
       // Only refetch when userToken changes
     }, [userToken])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchDashboards(false);
+    setRefreshing(false);
+  }, [userToken]);
 
   // 🔹 Add new dashboard
   const addDashboard = async () => {
@@ -283,6 +291,14 @@ export default function MainDashboardScreen() {
         renderItem={({ item }, rowMap) => (
           <DashboardCard item={item} onPress={() => openDashboard(item)} isDarkTheme={isDarkTheme} />
         )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={isDarkTheme ? "#FFFFFF" : "#000000"}
+            colors={[isDarkTheme ? "#FFFFFF" : "#000000"]}
+          />
+        }
         renderHiddenItem={({ item }) => (
           <View style={styles.rowBack}>
             <TouchableOpacity

@@ -10,7 +10,9 @@ import {
   Modal,
   FlatList,
   Pressable,
+  PermissionsAndroid,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
 import CustomAlert from "../components/CustomAlert";
 import { showToast } from "../components/Toast";
@@ -36,6 +38,7 @@ import {
   Star,
   FileCode,
   Code,
+  X,
 } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
@@ -103,25 +106,32 @@ function getTimeSince(date) {
 // --- Memoized Sensor Card Component ---
 const SensorCard = React.memo(({ sensor, onPress, Colors }) => (
   <TouchableOpacity
-    style={[styles.sensorCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}
-    activeOpacity={0.8}
+    style={[styles.sensorCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}
+    activeOpacity={0.7}
     onPress={() => onPress(sensor)}
   >
-    <View style={[styles.sensorIconContainer, { backgroundColor: `${Colors.primary}1A` }]}>
-      {getSensorIcon(sensor.type, 24, Colors.primary)}
+    <View style={styles.sensorHeader}>
+      <Text style={[styles.sensorLabel, { color: Colors.textSecondary }]} numberOfLines={1}>{sensor.label}</Text>
+      <View style={[styles.sensorIconContainer, { backgroundColor: `${Colors.primary}15` }]}>
+        {getSensorIcon(sensor.type, 20, Colors.primary)}
+      </View>
     </View>
-    <Text style={[styles.sensorLabel, { color: Colors.text }]}>{sensor.label}</Text>
-    <View style={styles.sensorValueContainer}>
-      <Text style={[styles.sensorValue, { color: Colors.primary }]}>
+    
+    <View style={styles.sensorBody}>
+      <Text style={[styles.sensorValue, { color: Colors.text }]}>
         {typeof sensor.value === "number"
           ? sensor.value.toFixed(sensor.type === "temperature" ? 1 : 0)
           : String(sensor.value)}
+        <Text style={[styles.sensorUnit, { color: Colors.textSecondary }]}>{sensor.unit}</Text>
       </Text>
-      <Text style={[styles.sensorUnit, { color: Colors.textSecondary }]}>{sensor.unit}</Text>
     </View>
-    <Text style={[styles.sensorTimestamp, { color: Colors.textSecondary }]}>
-      Updated {getTimeSince(sensor.timestamp)}
-    </Text>
+    
+    <View style={styles.sensorFooter}>
+      <Clock size={12} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+      <Text style={[styles.sensorTimestamp, { color: Colors.textSecondary }]}>
+        {getTimeSince(sensor.timestamp)}
+      </Text>
+    </View>
   </TouchableOpacity>
 ));
 
@@ -228,6 +238,22 @@ export default function DeviceDetailScreen({ route, navigation }) {
       });
     }
   }, [device, navigation, Colors]);
+
+  // Request Notification Permission for Android 13+
+  useEffect(() => {
+    const requestPermission = async () => {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+        } catch (err) {
+          console.warn('Failed to request notification permission:', err);
+        }
+      }
+    };
+    requestPermission();
+  }, []);
 
   // Show skeleton while context is refreshing and device is not yet found
   if (isContextRefreshing && !device) {
@@ -408,7 +434,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
           />
         }
       >
-        <View style={[styles.statusCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
+        <View style={[styles.statusCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}>
           <View style={styles.statusHeader}>
             <View style={[styles.deviceIcon, { backgroundColor: `${Colors.primary}1A` }]}>
               <Cpu size={32} color={Colors.primary} />
@@ -424,7 +450,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
             </View>
           </View>
 
-          <View style={[styles.divider, { backgroundColor: Colors.cardBorder }]} />
+          <View style={[styles.divider, { backgroundColor: Colors.cardBorder, marginVertical: 16 }]} />
 
           <View style={styles.infoGrid}>
             <View style={styles.infoItem}>
@@ -456,7 +482,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: Colors.text }]}>Device ID & Access Token</Text>
           </View>
-          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 20, marginTop: 4, marginBottom: 12, gap: 12, elevation: 5, shadowColor: Colors.primary, shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 4 } }]}>
+          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}>
             {/* Device ID row */}
             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: `${Colors.primary}06`, borderRadius: 12, borderWidth: 1, borderColor: `${Colors.primary}30`, marginBottom: 8 }}>
               <Text selectable style={{ flex: 1, color: Colors.text, fontFamily: 'monospace', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 }} numberOfLines={1} ellipsizeMode="middle">
@@ -524,20 +550,34 @@ export default function DeviceDetailScreen({ route, navigation }) {
                     "digital", "thermometer", "tank", "battery",
                     "status", "energy"
                   ].map((type) => (
-                    <Pressable key={type} style={styles.widgetOption} onPress={() => handleWidgetSelect(type)}>
+                    <Pressable 
+                      key={type} 
+                      style={[
+                        styles.widgetOption, 
+                        { 
+                          borderColor: Colors.cardBorder,
+                          backgroundColor: isDarkTheme ? 'rgba(0,0,0,0.2)' : '#F8FAFC'
+                        }
+                      ]} 
+                      onPress={() => handleWidgetSelect(type)}
+                    >
                       <View style={styles.widgetPreview}>
-                        <WidgetRenderer
-                          item={{
-                            type: type,
-                            label: selectedSensor?.label,
-                            value: selectedSensor?.value,
-                            config: { key: selectedSensor?.id },
-                            device_id: device?._id,
-                          }}
-                          isDarkTheme={isDarkTheme}
-                        />
+                        <View style={{ transform: [{ scale: 0.65 }] }}>
+                          <WidgetRenderer
+                            item={{
+                              type: type,
+                              label: selectedSensor?.label,
+                              value: selectedSensor?.value,
+                              config: { key: selectedSensor?.id },
+                              device_id: device?._id,
+                            }}
+                            isDarkTheme={isDarkTheme}
+                          />
+                        </View>
                       </View>
-                      <Text style={[styles.widgetText, { color: Colors.primary }]}>{type.toUpperCase()}</Text>
+                      <View style={[styles.widgetLabelContainer, { backgroundColor: Colors.primary + '15' }]}>
+                        <Text style={[styles.widgetText, { color: Colors.primary }]}>{type.toUpperCase()}</Text>
+                      </View>
                     </Pressable>
                   ))}
                 </View>
@@ -627,11 +667,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
             </View>
 
             {/* Code Display */}
-            <ScrollView 
-              style={styles.codeScrollView}
-              showsVerticalScrollIndicator={true}
-            >
-              <View style={[styles.codeBlock, { backgroundColor: Colors.background }]}>
+            <View style={styles.codeScrollView}>
+              <View style={[styles.codeContainer, { backgroundColor: Colors.background, borderColor: Colors.cardBorder }]}>
                 <View style={styles.codeBlockHeader}>
                   <Text style={[styles.codeBlockTitle, { color: Colors.text }]}>
                     {selectedCodeType === 'esp32' ? 'ESP32 Arduino Code' : 'Python Code'}
@@ -646,20 +683,33 @@ export default function DeviceDetailScreen({ route, navigation }) {
                       showToast.success("Code copied to clipboard!");
                     }}
                   >
-                    <Copy size={16} color={Colors.primary} />
+                    <Copy size={14} color={Colors.primary} />
                     <Text style={[styles.copyButtonText, { color: Colors.primary }]}>Copy</Text>
                   </TouchableOpacity>
                 </View>
-                <Text 
-                  selectable
-                  style={[styles.codeText, { color: Colors.text, fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }) }]}
+                
+                <ScrollView 
+                  style={[styles.codeScrollView, { backgroundColor: isDarkTheme ? '#0d1117' : '#f6f8fa' }]}
+                  contentContainerStyle={{ padding: 16 }}
+                  showsVerticalScrollIndicator={true}
                 >
-                  {selectedCodeType === 'esp32' 
-                    ? generateESP32Code(device, BASE_URL)
-                    : generatePythonCode(device, BASE_URL)}
-                </Text>
+                    <Text 
+                      selectable
+                      style={[
+                        styles.codeText, 
+                        { 
+                            color: isDarkTheme ? '#c9d1d9' : '#24292e',
+                            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' 
+                        }
+                      ]}
+                    >
+                      {selectedCodeType === 'esp32' 
+                        ? generateESP32Code(device, BASE_URL)
+                        : generatePythonCode(device, BASE_URL)}
+                    </Text>
+                </ScrollView>
               </View>
-            </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -678,6 +728,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
 function generateESP32Code(device, baseUrl) {
   const deviceId = String(device._id || device.id);
   const deviceToken = device.device_token || 'YOUR_DEVICE_TOKEN_HERE';
+  const cleanBaseUrl = baseUrl.replace(/\/$/, '');
   
   return `/* ESP32 Integration with ThingsNXT */
 
@@ -691,7 +742,7 @@ const char* password = "YOUR_WIFI_PASSWORD";
 
 // ☁️ ThingsNXT Configuration
 const char* deviceToken = "${deviceToken}";
-String serverUrl = "${baseUrl}/devices/${deviceId}/telemetry";
+String serverUrl = "${cleanBaseUrl}/devices/${deviceId}/telemetry";
 
 // 🔌 Virtual Pin Mapping (Example)
 struct PinMapping { uint8_t vPin; uint8_t gpio; };
@@ -748,49 +799,34 @@ void loop() {
 function generatePythonCode(device, baseUrl) {
   const deviceId = String(device._id || device.id);
   const deviceToken = device.device_token || 'YOUR_DEVICE_TOKEN_HERE';
+  const cleanBaseUrl = baseUrl.replace(/\/$/, '');
   
-  return `Python Integration with ThingsNXT Platform
-============================================
+  return `import requests
 
-📡 API ENDPOINT URL:
-${baseUrl}/devices/${deviceId}/telemetry
-
-🔑 AUTHENTICATION:
-Method: POST
-Content-Type: application/json
-
-📝 PYTHON CODE EXAMPLE:
-import requests
-
+# Configuration
 DEVICE_ID = "${deviceId}"
 DEVICE_TOKEN = "${deviceToken}"
-SERVER_URL = f"${baseUrl}/devices/{DEVICE_ID}/telemetry"
+BASE_URL = "${cleanBaseUrl}"
+SERVER_URL = f"{BASE_URL}/devices/{DEVICE_ID}/telemetry"
 
 def send_telemetry():
-    # Payload: Include Device Token in JSON body
     payload = {
         "device_token": DEVICE_TOKEN,
-        "temperature": 25.5,  # Your sensor data
-        "humidity": 60.0,     # Your sensor data
-        "pressure": 1013.25,  # Your sensor data
+        "temperature": 25.5,
+        "humidity": 60.0
     }
     
     headers = {"Content-Type": "application/json"}
     
-    response = requests.post(SERVER_URL, json=payload, headers=headers)
-    return response
+    try:
+        response = requests.post(SERVER_URL, json=payload, headers=headers)
+        print(f"Status: {response.status_code}")
+        print(response.json())
+    except Exception as e:
+        print(f"Error: {e}")
 
-# Usage
-response = send_telemetry()
-print(response.status_code)
-print(response.json())
-
-✅ KEY POINTS:
-• Device ID goes in the URL path
-• Device Token goes in the JSON payload
-• Use POST method
-• Include Content-Type: application/json header
-• Install: pip install requests`;
+if __name__ == "__main__":
+    send_telemetry()`;
 }
 
 const styles = StyleSheet.create({
@@ -817,7 +853,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     margin: 20,
+    marginBottom: 10,
     borderWidth: 1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   statusHeader: {
     flexDirection: "row",
@@ -857,7 +898,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: COLORS.cardBorder,
-    marginBottom: 20,
   },
   infoGrid: {
     flexDirection: "row",
@@ -890,6 +930,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   sensorCard: {
     borderRadius: 12,
@@ -897,30 +945,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     width: "48.5%", // Adjusted for better spacing in a 2-column layout
     gap: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    justifyContent: 'space-between',
+    minHeight: 110,
+  },
+  sensorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   sensorIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
   },
   sensorLabel: {
-    fontSize: moderateScale(13),
-    fontWeight: "500",
-  },
-  sensorValueContainer: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 4,
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+    flex: 1,
+    textTransform: 'capitalize',
   },
   sensorValue: {
-    fontSize: moderateScale(28, 0.3),
+    fontSize: moderateScale(24),
     fontWeight: "700",
   },
   sensorUnit: {
     fontSize: moderateScale(14),
+    marginLeft: 2,
+    fontWeight: '500',
+  },
+  sensorBody: {
+    marginVertical: 4,
+  },
+  sensorFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 'auto',
   },
   sensorTimestamp: {
     fontSize: moderateScale(11),
@@ -976,27 +1042,37 @@ const styles = StyleSheet.create({
   widgetOptions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
+    justifyContent: "space-between",
     marginVertical: 10,
-    gap: 10,
+    gap: 12,
   },
   widgetOption: {
     width: "48%",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  widgetPreview: {
+    justifyContent: "space-between",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 8,
     height: 140,
-    width: '100%',
-    transform: [{ scale: 0.8 }], // Scale down for preview
-    alignItems: 'center',
-    justifyContent: 'center',
     overflow: 'hidden',
   },
+  widgetPreview: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  widgetLabelContainer: {
+    width: '100%',
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 4,
+  },
   widgetText: {
-    fontWeight: "600",
-    fontSize: moderateScale(12),
+    fontWeight: "700",
+    fontSize: moderateScale(11),
+    letterSpacing: 0.5,
   },
   dashboardItem: {
     padding: 12,
@@ -1029,78 +1105,79 @@ const styles = StyleSheet.create({
   },
   // Code Modal Styles
   codeModalView: {
-    width: "95%",
-    maxWidth: 500,
-    maxHeight: "90%",
-    borderRadius: 20,
-    padding: 20,
-    elevation: 8,
+    width: "90%",
+    maxWidth: 600,
+    maxHeight: "85%",
+    height: "70%",
+    borderRadius: 24,
+    padding: 24,
+    elevation: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
   },
   codeModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    marginBottom: 24,
   },
   codeModalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
-    letterSpacing: -0.3,
+    marginBottom: 4,
   },
-  codeModalClose: {
-    fontSize: 24,
-    fontWeight: "300",
-    padding: 4,
+  codeModalSubtitle: {
+    fontSize: 14,
+  },
+  closeIconButton: {
+    padding: 8,
+    borderRadius: 20,
   },
   codeTypeSelector: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 20,
   },
   codeTypeButton: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    borderRadius: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   codeTypeText: {
     fontSize: 14,
     fontWeight: "600",
   },
-  codeScrollView: {
-    maxHeight: 500,
-    borderRadius: 12,
+  codeContainer: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
     overflow: 'hidden',
   },
-  codeBlock: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+  codeScrollView: {
+    flex: 1,
   },
   codeBlockHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   codeBlockTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "500",
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     gap: 6,
@@ -1110,7 +1187,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   codeText: {
-    fontSize: 11,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 20,
   },
 });

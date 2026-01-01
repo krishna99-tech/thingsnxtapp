@@ -5,10 +5,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
   Animated,
-  TextInput
+  StatusBar
 } from 'react-native';
 
+import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import {
   User,
@@ -23,7 +29,9 @@ import {
   Wifi,
   LayoutDashboard,
   Hash,
-  CheckCircle
+  CheckCircle,
+  ChevronRight,
+  LogOut
 } from 'lucide-react-native';
 
 import CustomAlert from '../components/CustomAlert';
@@ -31,14 +39,11 @@ import StatCard from '../components/profile/StatCard';
 import ProfileInfoRow from '../components/profile/ProfileInfoRow';
 import api from '../services/api';
 
-// Utility
+// Utility for hex opacity
 const alpha = (hex, opacity) => {
   const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
   return hex + o;
 };
-
-// Reference height for header animation
-const HEADER_HEIGHT = 220;
 
 // Helper to ensure dates are treated as UTC if missing timezone info
 const parseDate = (date) => {
@@ -49,10 +54,10 @@ const parseDate = (date) => {
   return new Date(date);
 };
 
+// Logic for real-time device status calculation
 const getDeviceStatus = (device) => {
   if (!device) return "offline";
   
-  // Check last_active with 60s threshold
   if (device.last_active) {
     const lastActive = parseDate(device.last_active);
     const now = new Date();
@@ -61,10 +66,9 @@ const getDeviceStatus = (device) => {
     if (secondsSinceActive <= 60) {
       return "online";
     } else if (device.status === "online") {
-      return "offline"; // Override if stale
+      return "offline"; 
     }
   }
-  
   return device.status || "offline";
 };
 
@@ -76,22 +80,26 @@ export default function ProfileScreen({ navigation }) {
     devices,
     isDarkTheme,
     updateUser,
-    deleteAccount
+    deleteAccount,
+    logout
   } = useContext(AuthContext);
 
+  // Form State
   const [isEditing, setIsEditing] = useState(false);
   const [editedUsername, setEditedUsername] = useState(username || "");
   const [editedEmail, setEditedEmail] = useState(email || "");
   const [editedFullName, setEditedFullName] = useState(user?.full_name || "");
+  
+  // UI State
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [dashboardCount, setDashboardCount] = useState(0);
   const [loadingStats, setLoadingStats] = useState(true);
   const [alertVisible, setAlertVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  const scrollY = useRef(new Animated.Value(0)).current;
-
+  // Theme Constants
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
     surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
@@ -104,35 +112,19 @@ export default function ProfileScreen({ navigation }) {
     white: "#FFFFFF",
     text: isDarkTheme ? "#FFFFFF" : "#1E293B",
     textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
+    gradientStart: isDarkTheme ? "#00D9FF" : "#3B82F6",
+    gradientEnd: isDarkTheme ? "#0066FF" : "#2563EB",
   };
 
-  // Animations
-  const avatarScale = scrollY.interpolate({
-    inputRange: [0, 140],
-    outputRange: [1, 0.8],
+  // Sticky Header Animation
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [100, 160],
+    outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
-  const avatarTranslateY = scrollY.interpolate({
-    inputRange: [0, 140],
-    outputRange: [0, -60],
-    extrapolate: 'clamp',
-  });
-
-  const nameTranslateY = scrollY.interpolate({
-    inputRange: [0, 140],
-    outputRange: [0, -50],
-    extrapolate: 'clamp',
-  });
-
-  const nameScale = scrollY.interpolate({
-    inputRange: [0, 140],
-    outputRange: [1, 0.95],
-    extrapolate: 'clamp',
-  });
-
-  // FIXED: Reset ONLY when NOT editing
+  // Sync state with Context
   useEffect(() => {
     if (!isEditing) {
       setEditedUsername(username || "");
@@ -142,23 +134,30 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [username, email, user?.full_name, isEditing]);
 
-  // Load dashboard count
+  // Load Dashboards
+  const loadDashboards = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoadingStats(true);
+      const dashboards = await api.getDashboards();
+      setDashboardCount(dashboards?.length || 0);
+    } catch (err) {
+      console.log("Dashboard load error:", err);
+    } finally {
+      if (showLoading) setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
-    const loadDashboards = async () => {
-      try {
-        setLoadingStats(true);
-        const dashboards = await api.getDashboards();
-        setDashboardCount(dashboards?.length || 0);
-      } catch (err) {
-        console.log("Dashboard load error:", err);
-      } finally {
-        setLoadingStats(false);
-      }
-    };
     loadDashboards();
   }, []);
 
-  // Track changes
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboards(false);
+    setRefreshing(false);
+  };
+
+  // Track if any field changed
   useEffect(() => {
     setHasChanges(
       editedUsername !== username || 
@@ -173,23 +172,11 @@ export default function ProfileScreen({ navigation }) {
     if (isSaving || !hasChanges) return;
 
     if (!editedUsername.trim()) {
-      setAlertConfig({
-        type: "warning",
-        title: "Invalid Input",
-        message: "Username cannot be empty.",
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
+      showAlert("warning", "Invalid Input", "Username cannot be empty.");
       return;
     }
     if (!isEmailValid(editedEmail)) {
-      setAlertConfig({
-        type: "warning",
-        title: "Invalid Input",
-        message: "Please enter a valid email address.",
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
+      showAlert("warning", "Invalid Input", "Please enter a valid email address.");
       return;
     }
 
@@ -203,27 +190,24 @@ export default function ProfileScreen({ navigation }) {
       if (Object.keys(updates).length > 0) {
         await updateUser(updates);
       }
-
-      // FIXED: Exit editing mode BEFORE context update completes
-      setIsEditing(false);
       
-      setAlertConfig({
-        type: "success",
-        title: "Profile Updated",
-        message: "Your changes have been saved.",
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
+      setIsEditing(false);
+      showAlert("success", "Profile Updated", "Your changes have been saved successfully.");
     } catch (err) {
-      setAlertConfig({
-        type: "error",
-        title: "Update Failed",
-        message: err.message || "Failed to update profile.",
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-      });
-      setAlertVisible(true);
+      showAlert("error", "Update Failed", err.message || "Failed to update profile.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
+  };
+
+  const showAlert = (type, title, message) => {
+    setAlertConfig({
+      type,
+      title,
+      message,
+      buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+    });
+    setAlertVisible(true);
   };
 
   const handleCancel = () => {
@@ -234,17 +218,31 @@ export default function ProfileScreen({ navigation }) {
     setHasChanges(false);
   };
 
+  const handleLogout = () => {
+    setAlertConfig({
+      type: "confirm",
+      title: "Logout",
+      message: "Are you sure you want to sign out?",
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
+        { text: "Logout", style: "destructive", onPress: async () => { setAlertVisible(false); logout(); } }
+      ]
+    });
+    setAlertVisible(true);
+  };
+
   const handleDeleteAccount = () => {
     setAlertConfig({
       type: "confirm",
       title: "Delete Account",
-      message: "Are you sure you want to permanently delete your account? This action cannot be undone.",
+      message: "Are you sure? All your devices and data will be permanently deleted. This cannot be undone.",
       buttons: [
         { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
+            setAlertVisible(false);
             await deleteAccount();
           }
         }
@@ -253,121 +251,124 @@ export default function ProfileScreen({ navigation }) {
     setAlertVisible(true);
   };
 
-
   return (
-    <View style={[styles.container, { backgroundColor: Colors.background }]}>
-      {/* Collapsing profile header */}
-      <Animated.View style={[styles.headerWrapper, {
-        transform: [{
-          translateY: scrollY.interpolate({
-            inputRange: [0, HEADER_HEIGHT],
-            outputRange: [0, -HEADER_HEIGHT],
-            extrapolate: 'clamp',
-          })
-        }]
-      }]}>
-        <View style={[styles.headerCard, { backgroundColor: Colors.surface }]}>
-          <Animated.View
-            style={[
-              styles.avatar,
-              {
-                backgroundColor: alpha(Colors.primary, 0.25),
-                transform: [
-                  { translateY: avatarTranslateY },
-                  { scale: avatarScale },
-                ],
-              }
-            ]}
-          >
-            <User size={64} color={Colors.primary} />
-          </Animated.View>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={[styles.container, { backgroundColor: Colors.background }]}
+    >
+      <StatusBar barStyle="light-content" />
 
-          <Animated.View
-            style={{
-              transform: [
-                { translateY: nameTranslateY },
-                { scale: nameScale },
-              ],
-            }}
-          >
-            <Text style={[styles.profileName, { color: Colors.text }]}>
-              {isEditing ? editedFullName || editedUsername : (user?.full_name || username || "User")}
-            </Text>
-            <Text style={[styles.profileRole, { color: Colors.textSecondary }]}>
-              {user?.full_name ? `@${username || "user"}` : "Administrator"}
-            </Text>
-          </Animated.View>
+      {/* Sticky Header */}
+      <Animated.View style={[styles.stickyHeader, { opacity: headerOpacity }]}>
+        <LinearGradient
+          colors={[Colors.gradientStart, Colors.gradientEnd]}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.stickyHeaderContent}>
+          <Text style={styles.stickyHeaderName} numberOfLines={1}>
+            {user?.full_name || username || "Profile"}
+          </Text>
         </View>
       </Animated.View>
 
       <Animated.ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: HEADER_HEIGHT }]}
-        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primary}
+            colors={[Colors.primary]}
+          />
+        }
       >
-        {/* Stats cards */}
-        <View style={styles.statsSection}>
+        {/* Profile Hero Header */}
+        <LinearGradient
+          colors={[Colors.gradientStart, Colors.gradientEnd]}
+          style={styles.headerGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.headerContent}>
+            <View style={[styles.avatarContainer, { borderColor: 'rgba(255,255,255,0.2)' }]}>
+              <View style={[styles.avatar, { backgroundColor: Colors.surface }]}>
+                <User size={40} color={Colors.primary} />
+              </View>
+              {isEditing && (
+                <View style={[styles.editBadge, { backgroundColor: Colors.warning }]}>
+                  <Edit size={12} color="#FFF" />
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerName}>
+                {isEditing ? (editedFullName || "New Profile") : (user?.full_name || username || "User")}
+              </Text>
+              <Text style={styles.headerUsername}>
+                {username ? `@${username}` : "Administrator"}
+              </Text>
+              <View style={styles.roleChip}>
+                <Shield size={12} color="#FFF" style={{ marginRight: 4 }} />
+                <Text style={styles.roleText}>Admin Access</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Stats Grid - Fixed and Static */}
+        <View style={styles.statsGridModern}>
           <StatCard
+            style={styles.statCardModern}
             icon={<Calendar size={20} color={Colors.primary} />}
-            value={
-              user?.created_at
-                ? new Date(user.created_at).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short'
-                  })
-                : 'N/A'
-            }
+            value={user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 'N/A'}
             label="Member Since"
-            colors={[alpha(Colors.primary, 0.35), alpha(Colors.primary, 0.10)]}
+            colors={[Colors.surface, Colors.surface]}
             isDarkTheme={isDarkTheme}
           />
 
           <StatCard
+            style={styles.statCardModern}
             icon={<Cpu size={20} color={Colors.success} />}
             value={devices?.length || 0}
-            label="Total Devices"
-            colors={[alpha(Colors.success, 0.35), alpha(Colors.success, 0.10)]}
+            label="Devices"
+            colors={[Colors.surface, Colors.surface]}
             isDarkTheme={isDarkTheme}
           />
 
           <StatCard
+            style={styles.statCardModern}
             icon={<Wifi size={20} color={Colors.warning} />}
             value={devices?.filter(d => getDeviceStatus(d) === "online").length || 0}
-            label="Online Devices"
-            colors={[alpha(Colors.warning, 0.35), alpha(Colors.warning, 0.10)]}
+            label="Online Now"
+            colors={[Colors.surface, Colors.surface]}
             isDarkTheme={isDarkTheme}
           />
 
           <StatCard
+            style={styles.statCardModern}
             icon={<LayoutDashboard size={20} color={Colors.danger} />}
             value={dashboardCount}
             loading={loadingStats}
             label="Dashboards"
-            colors={[alpha(Colors.danger, 0.35), alpha(Colors.danger, 0.10)]}
+            colors={[Colors.surface, Colors.surface]}
             isDarkTheme={isDarkTheme}
           />
         </View>
 
-        {/* Profile edit section */}
+        {/* Information Section */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionHeaderText, { color: Colors.textSecondary }]}>
-            Profile details
-          </Text>
-
+          <Text style={[styles.sectionHeaderText, { color: Colors.textSecondary }]}>Account Information</Text>
           {!isEditing && (
-            <TouchableOpacity
-              style={styles.inlineEditBtn}
-              onPress={() => setIsEditing(true)}
-            >
-              <Edit size={16} color={Colors.textSecondary} />
-              <Text style={[styles.inlineEditText, { color: Colors.textSecondary }]}>
-                Edit
-              </Text>
+            <TouchableOpacity style={styles.inlineEditBtn} onPress={() => setIsEditing(true)}>
+              <Edit size={16} color={Colors.primary} />
+              <Text style={[styles.inlineEditText, { color: Colors.primary }]}>Edit</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -380,8 +381,7 @@ export default function ProfileScreen({ navigation }) {
             Colors={Colors}
             isEditing={isEditing}
             onChangeText={setEditedFullName}
-            placeholder="Enter your full name"
-            autoCapitalize="words"
+            placeholder="Full name"
           />
 
           <ProfileInfoRow
@@ -391,71 +391,55 @@ export default function ProfileScreen({ navigation }) {
             Colors={Colors}
             isEditing={isEditing}
             onChangeText={setEditedUsername}
-            placeholder="Enter username"
-            autoCapitalize="none"
+            placeholder="Username"
           />
 
           <ProfileInfoRow
             icon={<Mail size={20} color={Colors.primary} />}
-            label="Email"
+            label="Email Address"
             value={editedEmail}
             Colors={Colors}
             isEditing={isEditing}
             onChangeText={setEditedEmail}
-            placeholder="Enter email address"
             keyboardType="email-address"
-            autoCapitalize="none"
+            placeholder="Email"
           />
 
-          {!isEditing && user?.id && (
-            <ProfileInfoRow
-              icon={<Hash size={20} color={Colors.textSecondary} />}
-              label="User ID"
-              value={user.id}
-              Colors={Colors}
-              isEditing={false}
-              editable={false}
-            />
-          )}
-
           {!isEditing && (
-            <ProfileInfoRow
-              icon={<CheckCircle size={20} color={user?.is_active ? Colors.success : Colors.textSecondary} />}
-              label="Account Status"
-              value={user?.is_active ? "Active" : "Inactive"}
-              Colors={Colors}
-              isEditing={false}
-              editable={false}
-            />
+            <>
+              <ProfileInfoRow
+                icon={<Hash size={20} color={Colors.textSecondary} />}
+                label="User ID"
+                value={user?.id || '...'}
+                Colors={Colors}
+                isEditing={false}
+              />
+              <ProfileInfoRow
+                icon={<CheckCircle size={20} color={Colors.success} />}
+                label="Status"
+                value="Verified Account"
+                Colors={Colors}
+                isEditing={false}
+              />
+            </>
           )}
 
           {isEditing && (
             <View style={styles.inlineActionsRow}>
-              <TouchableOpacity
-                style={[styles.inlineActionButton, { backgroundColor: Colors.surfaceLight }]}
-                onPress={handleCancel}
-              >
+              <TouchableOpacity style={[styles.inlineActionButton, { backgroundColor: Colors.surfaceLight }]} onPress={handleCancel}>
                 <X size={16} color={Colors.text} />
-                <Text style={[styles.inlineActionText, { color: Colors.text }]}>
-                  Cancel
-                </Text>
+                <Text style={[styles.inlineActionText, { color: Colors.text }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.inlineActionButton,
-                  { backgroundColor: Colors.primary },
-                  (!hasChanges || isSaving) && styles.buttonDisabled
-                ]}
+                style={[styles.inlineActionButton, { backgroundColor: Colors.primary }, (!hasChanges || isSaving) && styles.buttonDisabled]}
                 onPress={handleSave}
                 disabled={!hasChanges || isSaving}
               >
-                {isSaving ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
+                {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : (
                   <>
                     <Save size={16} color="#FFF" />
-                    <Text style={styles.inlineActionText}>Save</Text>
+                    <Text style={styles.inlineActionText}>Save Changes</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -463,202 +447,176 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
-        {/* Security */}
+        {/* Settings & Security */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>
-            Security
-          </Text>
-
+          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Security & Settings</Text>
           <View style={[styles.card, { backgroundColor: Colors.surface }]}>
-            <TouchableOpacity
-              style={styles.securityRow}
-              onPress={() => navigation.navigate('ForgotPassword')}
-            >
-              <Shield size={20} color={Colors.textSecondary} />
-              <Text style={[styles.securityRowText, { color: Colors.text }]}>
-                Change Password
-              </Text>
+            <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('ForgotPassword')}>
+              <View style={[styles.menuIcon, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
+                <Shield size={20} color={Colors.primary} />
+              </View>
+              <Text style={[styles.menuText, { color: Colors.text }]}>Change Password</Text>
+              <ChevronRight size={18} color={Colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuRow} onPress={handleLogout}>
+              <View style={[styles.menuIcon, { backgroundColor: alpha(Colors.warning, 0.1) }]}>
+                <LogOut size={20} color={Colors.warning} />
+              </View>
+              <Text style={[styles.menuText, { color: Colors.text }]}>Sign Out</Text>
+              <ChevronRight size={18} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Danger Zone */}
-        <View style={[styles.section, { marginBottom: 40 }]}>
-          <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>
-            Danger Zone
-          </Text>
-
-          <View style={[styles.card, { backgroundColor: Colors.surface }]}>
-            <TouchableOpacity style={styles.securityRow} onPress={handleDeleteAccount}>
-              <Trash2 size={20} color={Colors.danger} />
-              <Text style={[styles.securityRowText, { color: Colors.danger }]}>
-                Delete Account
-              </Text>
+        <View style={[styles.section, { marginBottom: 60 }]}>
+          <Text style={[styles.sectionTitle, { color: Colors.danger }]}>Danger Zone</Text>
+          <View style={[styles.card, { backgroundColor: Colors.surface, borderColor: alpha(Colors.danger, 0.3), borderWidth: 1 }]}>
+            <TouchableOpacity style={styles.menuRow} onPress={handleDeleteAccount}>
+              <View style={[styles.menuIcon, { backgroundColor: alpha(Colors.danger, 0.1) }]}>
+                <Trash2 size={20} color={Colors.danger} />
+              </View>
+              <Text style={[styles.menuText, { color: Colors.danger }]}>Delete Account Permanently</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <CustomAlert
-          visible={alertVisible}
-          isDarkTheme={isDarkTheme}
-          {...alertConfig}
-        />
+        <CustomAlert visible={alertVisible} isDarkTheme={isDarkTheme} {...alertConfig} />
       </Animated.ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
-// STYLES
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-
-  headerWrapper: {
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+  
+  // Header Styles
+  stickyHeader: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: 12,
-    alignItems: 'center',
-    zIndex: 10,
-    paddingTop: 40,
+    top: 0, left: 0, right: 0,
+    height: Platform.OS === 'ios' ? 90 : 70,
+    justifyContent: 'flex-end',
+    paddingBottom: 15,
+    zIndex: 100,
   },
-
-  headerCard: {
-    width: '92%',
-    borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+  stickyHeaderContent: { alignItems: 'center' },
+  stickyHeaderName: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 70 : 50,
+    paddingBottom: 70,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  headerContent: { 
     flexDirection: 'row',
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    paddingHorizontal: 24,
   },
-
-  avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarContainer: {
+    position: 'relative',
+    borderWidth: 2,
+    borderRadius: 50,
+    padding: 2,
     marginRight: 16,
   },
-
-  profileName: {
-    fontSize: 24,
-    fontWeight: '700',
+  avatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0, right: 0,
+    width: 28, height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    alignItems: 'center', justifyContent: 'center'
   },
-
-  profileRole: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-
-  scroll: {
+  headerTextContainer: { 
     flex: 1,
+    alignItems: 'flex-start',
   },
-
-  scrollContent: {
-    paddingBottom: 40,
+  headerName: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 2 },
+  headerUsername: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 8 },
+  roleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
+  roleText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
 
-  statsSection: {
+  // Stats Grid
+  statsGridModern: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
+    marginTop: -50,
+  },
+  statCardModern: {
+    width: '48%',
+    marginBottom: 15,
   },
 
+  // Section Styles
   sectionHeaderRow: {
-    marginTop: 28,
-    marginBottom: 8,
-    paddingHorizontal: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 25,
+    marginTop: 25,
+    marginBottom: 10,
   },
+  sectionHeaderText: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  inlineEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  inlineEditText: { fontSize: 14, fontWeight: '600' },
+  
+  section: { paddingHorizontal: 20, marginTop: 30 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 5 },
 
-  sectionHeaderText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-
-  inlineEditBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  inlineEditText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
+  // Card Styles
   card: {
     marginHorizontal: 20,
-    borderRadius: 16,
-    overflow: 'hidden',
+    borderRadius: 24,
+    paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 5,
   },
+  
+  // Menu Row Styles
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+  },
+  menuIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
+  menuText: { flex: 1, fontSize: 16, fontWeight: '600' },
 
-
+  // Action Buttons
   inlineActionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#00000020',
+    padding: 15,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
-
   inlineActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 15,
+    gap: 8,
   },
-
-  inlineActionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-
-  section: {
-    marginHorizontal: 20,
-    marginTop: 32,
-  },
-
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-
-  securityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    gap: 16,
-  },
-
-  securityRowText: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-  },
+  inlineActionText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  buttonDisabled: { opacity: 0.5 },
 });

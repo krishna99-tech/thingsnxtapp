@@ -121,7 +121,13 @@ export default function NotificationsScreen() {
       
       setNotifications(formatted);
     } catch (err) {
-      console.error("Failed to load notifications:", err.message);
+      // Handle 404 gracefully (endpoint might be missing)
+      if (err.message && (err.message.includes("404") || err.status === 404)) {
+        console.warn("Notifications endpoint not found (404). Using empty list.");
+        setNotifications([]);
+      } else {
+        console.error("Failed to load notifications:", err.message);
+      }
       // API service will handle 401 and logout if refresh fails
     } finally {
       setLoading(false);
@@ -135,66 +141,88 @@ export default function NotificationsScreen() {
     loadNotifications();
     
     let sseController;
+    let isMounted = true;
 
-    const handleSSEMessage = (data) => {
-      if (data.type === "notification" && data.notification) {
-        const notif = data.notification;
-        setNotifications((prev) => [
-          {
-            id: notif._id || notif.id,
+    const connectWebSocket = () => {
+      if (!isMounted) return;
+
+      const handleSSEMessage = (data) => {
+        if (!isMounted) return;
+        
+        if (data.type === "notification" && data.notification) {
+          const notif = data.notification;
+          setNotifications((prev) => [
+            {
+              id: notif._id || notif.id,
+              title: notif.title,
+              message: notif.message,
+              type: notif.type || "info",
+              category: notif.category || "system",
+              timestamp: new Date(notif.created_at),
+              read: false,
+              deviceId: notif.details?.device_id,
+            },
+            ...prev,
+          ]);
+        } else if (data.type === "initial" && data.notifications?.length > 0) {
+          const formatted = data.notifications.map((notif) => ({
+            id: notif.id || notif._id,
             title: notif.title,
             message: notif.message,
             type: notif.type || "info",
             category: notif.category || "system",
             timestamp: new Date(notif.created_at),
-            read: false,
+            read: notif.read || false,
             deviceId: notif.details?.device_id,
-          },
-          ...prev,
-        ]);
-      } else if (data.type === "initial" && data.notifications?.length > 0) {
-        const formatted = data.notifications.map((notif) => ({
-          id: notif.id || notif._id,
-          title: notif.title,
-          message: notif.message,
-          type: notif.type || "info",
-          category: notif.category || "system",
-          timestamp: new Date(notif.created_at),
-          read: notif.read || false,
-          deviceId: notif.details?.device_id,
-        }));
-        setNotifications((prev) => {
-          const existingIds = new Set(prev.map((n) => n.id));
-          const newNotifs = formatted.filter((n) => !existingIds.has(n.id));
-          return [...newNotifs, ...prev];
+          }));
+          setNotifications((prev) => {
+            const existingIds = new Set(prev.map((n) => n.id));
+            const newNotifs = formatted.filter((n) => !existingIds.has(n.id));
+            return [...newNotifs, ...prev];
+          });
+        }
+      };
+
+      const handleSSEError = (err) => {
+        if (!isMounted) return;
+        console.error("SSE connection error:", err.message);
+        
+        if (err.message.includes("401") || err.message.includes("Session expired")) {
+          logout();
+          return;
+        }
+      };
+
+      api.streamNotifications(handleSSEMessage, handleSSEError)
+        .then(controller => {
+          if (isMounted) {
+            sseController = controller;
+          } else {
+            controller.abort();
+          }
+        })
+        .catch(err => {
+          handleSSEError(err);
         });
-      }
     };
 
-    const handleSSEError = (err) => {
-      console.error("SSE connection error:", err.message);
-      if (err.message.includes("401")) {
-        logout();
-      }
-      // Note: The api.js service does not auto-retry streaming connections.
-      // You could add a retry mechanism here if needed.
-    };
-
-    api.streamNotifications(handleSSEMessage, handleSSEError).then(controller => {
-      sseController = controller;
-    });
-
-    navigation.setOptions({
-      headerRight: () => unreadCount > 0 ? <HeaderRight /> : null,
-    });
+    connectWebSocket();
 
     // Cleanup function to abort the connection when the component unmounts
     return () => {
+      isMounted = false;
       if (sseController) {
         sseController.abort();
       }
     };
   }, [userToken]);
+
+  // Update header when unread count changes
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => unreadCount > 0 ? <HeaderRight /> : null,
+    });
+  }, [navigation, unreadCount]);
 
   const onRefresh = () => {
     setRefreshing(true);

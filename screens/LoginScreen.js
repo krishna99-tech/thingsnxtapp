@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,17 +16,34 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons"; 
 import { LinearGradient } from "expo-linear-gradient";
 import CustomAlert from "../components/CustomAlert";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState(""); // email or username
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const { login, isDarkTheme, showAlert } = useAuth();
   const navigation = useNavigation();
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
+  // Load remembered user
+  useEffect(() => {
+    const loadRememberedUser = async () => {
+      try {
+        const savedUser = await AsyncStorage.getItem("rememberedUser");
+        if (savedUser) {
+          setIdentifier(savedUser);
+          setRememberMe(true);
+        }
+      } catch (error) {
+        console.error("Failed to load remembered user", error);
+      }
+    };
+    loadRememberedUser();
+  }, []);
 
   // Handle Login
   const handleLogin = async () => {
@@ -44,9 +61,15 @@ export default function LoginScreen() {
     try {
       const loginResult = await login(identifier.trim(), password);
       if (loginResult) {
+        // Handle Remember Me
+        if (rememberMe) {
+          await AsyncStorage.setItem("rememberedUser", identifier.trim());
+        } else {
+          await AsyncStorage.removeItem("rememberedUser");
+        }
+
         // Show success alert AFTER navigation to ensure it appears on the home screen
         // Use the global showAlert from AuthContext
-        navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });
         setTimeout(() => {
           showAlert({
             type: 'success',
@@ -121,14 +144,28 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              {/* Forgot Password */}
-              <TouchableOpacity
-                style={styles.forgotButton}
-                onPress={() => navigation.navigate("ForgotPassword")}
-                disabled={loading}
-              >
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
+              {/* Options Row: Remember Me & Forgot Password */}
+              <View style={styles.optionsRow}>
+                <TouchableOpacity
+                  style={styles.rememberMeContainer}
+                  onPress={() => setRememberMe(!rememberMe)}
+                  disabled={loading}
+                >
+                  <Ionicons
+                    name={rememberMe ? "checkbox" : "square-outline"}
+                    size={20}
+                    color={rememberMe ? "#007AFF" : "#666"}
+                  />
+                  <Text style={styles.rememberMeText}>Remember Me</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("ForgotPassword")}
+                  disabled={loading}
+                >
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Login Button */}
               <TouchableOpacity
@@ -195,7 +232,21 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   eyeButton: { padding: 12 },
-  forgotButton: { alignSelf: "flex-end", marginBottom: 24 },
+  optionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  rememberMeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rememberMeText: {
+    marginLeft: 8,
+    color: "#333",
+    fontSize: 14,
+  },
   forgotText: { color: "#007AFF", fontSize: 14, fontWeight: "600" },
   button: {
     backgroundColor: "#007AFF",

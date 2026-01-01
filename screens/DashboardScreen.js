@@ -40,7 +40,7 @@ const calculateNumColumns = () => Math.max(MIN_COLUMNS, Math.floor(screenWidth /
 // 🎯 Main Dashboard Component
 function DashboardContent({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { isDarkTheme, showAlert, subscribeToMessages, devices } = useContext(AuthContext);
+  const { isDarkTheme, showAlert } = useContext(AuthContext);
   const { widgets, setWidgets, loading, refreshing, onRefresh, fetchWidgets } = useDashboard();
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -53,23 +53,6 @@ function DashboardContent({ route, navigation }) {
 
   const [editMode, setEditMode] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-
-  // Keep devices ref updated for toast notifications
-  const devicesRef = useRef(devices);
-  useEffect(() => {
-    devicesRef.current = devices;
-  }, [devices]);
-
-  // Listen for device online status to show toast
-  useEffect(() => {
-    const handleStatusMessage = (msg) => {
-      if (msg.type === "status_update" && msg.status === "online") {
-        const deviceName = devicesRef.current?.find(d => String(d._id || d.id) === String(msg.device_id))?.name || "Device";
-        showToast.success(`${deviceName} is now online`);
-      }
-    };
-    return subscribeToMessages?.(handleStatusMessage);
-  }, [subscribeToMessages]);
 
   // --- Responsive Grid State ---
   const [numColumns, setNumColumns] = useState(calculateNumColumns());

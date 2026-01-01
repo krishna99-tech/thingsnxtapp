@@ -5,6 +5,8 @@ import {
   Platform,
   StyleSheet,
   Text,
+  PermissionsAndroid,
+  Linking,
 } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme, useTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -28,6 +30,7 @@ import HomeScreen from "./screens/HomeScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import WebViewScreen from './screens/WebViewScreen'; // 👈 Import the new screen
+import ConnectedAppsScreen from "./screens/ConnectedAppsScreen";
 
 
 import CustomAlert from "./components/CustomAlert";
@@ -164,7 +167,34 @@ function AppStack() {
 }
 
 export default function RootNavigator() {
-  const { userToken, isDarkTheme, alertVisible, alertConfig } = useAuth();
+  const { userToken, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
+
+  // Request Notification Permission for Android 13+
+  React.useEffect(() => {
+    const requestPermission = async () => {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          const result = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+          if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+            showAlert({
+              type: 'warning',
+              title: 'Notifications Disabled',
+              message: 'Please enable notifications in settings to receive updates.',
+              buttons: [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() }
+              ]
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to request notification permission:', err);
+        }
+      }
+    };
+    requestPermission();
+  }, []);
 
   return (
     <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: '#F1F5F9' }}}>
@@ -188,6 +218,7 @@ export default function RootNavigator() {
               <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
               <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, presentation: 'modal' }} />
                <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{headerShown:false}} /> 
+              <Stack.Screen name="ConnectedApps" component={ConnectedAppsScreen} options={{ headerShown: true, presentation: 'modal' }} />
               <Stack.Screen 
                 name="WebView" 
                 component={WebViewScreen} 

@@ -1,4 +1,4 @@
-// ProfileInfoRow.jsx - WhatsApp/Modern Profile Row
+// ProfileInfoRow.js - Optimized for Modern Profile Design
 import React, { useState } from 'react';
 import { 
   View, 
@@ -6,13 +6,12 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   TextInput, 
-  Platform, 
-  Pressable,
+  Platform
 } from 'react-native';
 import { ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 
-// Safe hex + opacity utility
 const alpha = (hex, opacity) => {
+  if (!hex) return '#00000000';
   const o = Math.round(opacity * 255).toString(16).padStart(2, "0");
   return hex + o;
 };
@@ -33,83 +32,106 @@ const ProfileInfoRow = ({
   secureTextEntry = false,
   maxLength,
   editable = true,
+  caption = null,
+  layout = 'horizontal', 
+  iconSize = 20,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const isPasswordField = secureTextEntry && isEditing;
-  // Read-only mode (clickable)
+  const isVertical = layout === 'vertical';
+
+  const IconContainer = () => (
+    <View style={[
+      styles.infoIcon, 
+      { 
+        backgroundColor: alpha(Colors.primary, 0.1),
+        marginBottom: isVertical ? 12 : 0,
+      }
+    ]}>
+      {React.cloneElement(icon, { size: iconSize, color: Colors.primary })}
+    </View>
+  );
+
+  // --- READ-ONLY MODE ---
   if (!isEditing) {
     return (
       <TouchableOpacity
         style={[
           styles.infoRow, 
           { 
-            borderBottomColor: Colors.border,
-            backgroundColor: Colors.surface
+            borderBottomColor: alpha(Colors.textSecondary, 0.1),
+            flexDirection: isVertical ? 'column' : 'row',
+            alignItems: isVertical ? 'flex-start' : 'center',
           }
         ]}
         onPress={onPress}
-        activeOpacity={onPress ? 0.6 : 1}
+        activeOpacity={onPress ? 0.7 : 1}
         disabled={!onPress}
       >
-        <View style={[
-          styles.infoIcon, 
-          { 
-            backgroundColor: alpha(Colors.primary, 0.1),
-          }
-        ]}>
-          {icon}
-        </View>
+        <IconContainer />
 
-        <View style={{ flex: 1 }}>
+        <View style={styles.contentContainer}>
           <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
             {label}
           </Text>
-          <Text style={[styles.infoValue, { color: Colors.text }]} numberOfLines={1}>
+          <Text 
+            style={[
+              styles.infoValue, 
+              { color: Colors.text }, 
+              isVertical && styles.verticalValue
+            ]} 
+            numberOfLines={isVertical ? 0 : 1}
+            ellipsizeMode='tail' 
+          >
             {value || placeholder || 'Not set'}
           </Text>
+          {caption && (
+            <Text style={[styles.infoCaption, { color: Colors.textSecondary }]}>
+              {caption}
+            </Text>
+          )}
         </View>
-        {onPress && <ChevronRight size={20} color={Colors.textSecondary} />}
+        
+        {onPress && !isVertical && (
+          <ChevronRight size={18} color={Colors.textSecondary} />
+        )}
       </TouchableOpacity>
     );
   }
 
-  // Editing mode
+  // --- EDITING MODE ---
   return (
     <View style={[
       styles.infoRow, 
       { 
-        borderBottomColor: Colors.border,
-        backgroundColor: Colors.surface
+        borderBottomColor: alpha(Colors.textSecondary, 0.1),
+        flexDirection: isVertical ? 'column' : 'row',
+        alignItems: isVertical ? 'flex-start' : 'center',
       }
     ]}>
-      <View style={[
-        styles.infoIcon, 
-        { 
-          backgroundColor: alpha(Colors.primary, 0.1),
-        }
-      ]}>
-        {icon}
-      </View>
+      <IconContainer />
 
-      <View style={{ flex: 1 }}>
+      <View style={styles.contentContainer}>
         <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
           {label}
         </Text>
-        <View style={{ position: 'relative' }}>
+        <View style={[
+          styles.inputWrapper,
+          {
+            backgroundColor: Colors.surfaceLight,
+            borderColor: isEditing ? Colors.primary : 'transparent',
+          }
+        ]}>
           <TextInput
             style={[
               styles.inputField,
               multiline && styles.inputFieldMultiline,
-              isPasswordField && styles.inputFieldPassword,
-              { 
-                color: Colors.text,
-                borderBottomColor: Colors.primary
-              }
+              { color: Colors.text }
             ]}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={alpha(Colors.textSecondary, 0.5)}
             autoCapitalize={autoCapitalize}
             autoCorrect={false}
             keyboardType={keyboardType}
@@ -117,7 +139,6 @@ const ProfileInfoRow = ({
             numberOfLines={numberOfLines}
             textAlignVertical={multiline ? "top" : "center"}
             selectionColor={Colors.primary}
-            clearButtonMode="never"
             secureTextEntry={isPasswordField && !showPassword}
             maxLength={maxLength}
             editable={editable}
@@ -142,59 +163,65 @@ const ProfileInfoRow = ({
 
 const styles = StyleSheet.create({
   infoRow: {
-    flexDirection: "row",
-    alignItems: 'center',
-    minHeight: 60,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowPressed: {
-    opacity: 0.7,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
   infoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
   },
+  contentContainer: {
+    flex: 1,
+    width: '100%',
+  },
   infoLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   infoValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
-  inputField: {
-    fontSize: 16,
-    fontWeight: "600",
-    backgroundColor: 'transparent',
-    borderBottomWidth: 2,
-    paddingLeft: 0,
-    paddingRight: 0,
-    paddingTop: 8,
-    paddingBottom: 8,
+  verticalValue: {
+    fontSize: 17,
     marginTop: 2,
-    minHeight: 44, // Touch target
+    marginBottom: 4,
+  },
+  infoCaption: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    marginTop: 6,
+  },
+  inputField: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    minHeight: 44,
   },
   inputFieldMultiline: {
     minHeight: 80,
     paddingTop: 12,
-    paddingBottom: 12,
-  },
-  inputFieldPassword: {
-    paddingRight: 40,
   },
   passwordToggle: {
-    position: 'absolute',
-    right: 12,
-    top: '50%',
-    transform: [{ translateY: -9 }],
-    padding: 4,
+    paddingLeft: 10,
   },
 });
 

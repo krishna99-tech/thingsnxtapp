@@ -192,29 +192,58 @@ const DashboardCard = React.memo(({ dashboard, onPress, Colors }) => {
 
 const DeviceCard = React.memo(({ device, onPress, Colors }) => {
   const status = getDeviceStatus(device);
+  const isOnline = status === 'online';
+
   return (
   <TouchableOpacity
-    style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
+    style={[
+      styles.deviceCard, 
+      { 
+        backgroundColor: Colors.surface, 
+        borderColor: isOnline ? Colors.primary + '30' : Colors.border,
+        shadowColor: isOnline ? Colors.primary : '#000',
+        shadowOpacity: isOnline ? 0.05 : 0,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: isOnline ? 2 : 0,
+      }
+    ]}
     onPress={() => onPress(device)}
     activeOpacity={0.7}
   >
     <View style={styles.deviceCardHeader}>
-      <View style={[styles.deviceIcon, { backgroundColor: status === "online" ? Colors.primary + "20" : Colors.surfaceLight }]}>
-        {getDeviceIcon(device.type, 20, status === 'online' ? Colors.primary : Colors.textMuted)}
+      <View style={[styles.deviceIcon, { backgroundColor: isOnline ? Colors.primary + "15" : Colors.surfaceLight }]}>
+        {getDeviceIcon(device.type, 22, isOnline ? Colors.primary : Colors.textMuted)}
       </View>
-      {getStatusIcon(status, 14)}
+      {getStatusIcon(status, 12)}
     </View>
-    <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
-      {device.name}
-    </Text>
-    <Text style={[styles.deviceRoom, { color: Colors.textMuted }]}>{device.type}</Text>
-    {device.isOn !== undefined && !device.value && (
-      <View style={[styles.deviceStatus, { backgroundColor: device.isOn ? Colors.success + "20" : Colors.surfaceLight }]}>
-        <Text style={[styles.deviceStatusText, { color: device.isOn ? Colors.success : Colors.textMuted }]}>
-          {device.isOn ? "ON" : "OFF"}
+    
+    <View style={styles.deviceInfo}>
+      <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
+        {device.name}
+      </Text>
+      <Text style={[styles.deviceRoom, { color: Colors.textMuted }]} numberOfLines={1}>
+        {device.type || 'Device'}
+      </Text>
+    </View>
+
+    <View style={styles.deviceBottom}>
+      {device.value !== undefined && device.value !== null ? (
+        <Text style={[styles.deviceValueText, { color: Colors.text }]}>
+          {device.value} <Text style={{ fontSize: 12, color: Colors.textMuted }}>{device.unit || ''}</Text>
         </Text>
-      </View>
-    )}
+      ) : device.isOn !== undefined ? (
+        <View style={[styles.deviceStatus, { backgroundColor: device.isOn ? Colors.success + "20" : Colors.surfaceLight }]}>
+          <Text style={[styles.deviceStatusText, { color: device.isOn ? Colors.success : Colors.textMuted }]}>
+            {device.isOn ? "ON" : "OFF"}
+          </Text>
+        </View>
+      ) : (
+        <Text style={[styles.deviceStatusText, { color: Colors.textMuted, fontSize: 11, fontWeight: '500' }]}>
+          {status === 'online' ? 'Active' : 'Offline'}
+        </Text>
+      )}
+    </View>
   </TouchableOpacity>
 )});
 
@@ -279,12 +308,15 @@ const DashboardCardSkeleton = React.memo(({ Colors }) => (
 ));
 
 const DeviceCardSkeleton = React.memo(({ Colors }) => (
-  <Shimmer style={[styles.deviceCard, { backgroundColor: Colors.surfaceLight }]} isDarkTheme={Colors.background === "#0A0E27"}>
+  <Shimmer style={[styles.deviceCard, { backgroundColor: Colors.surfaceLight, borderColor: 'transparent' }]} isDarkTheme={Colors.background === "#0A0E27"}>
     <View style={styles.deviceCardHeader}>
       <View style={[styles.deviceIcon, { backgroundColor: Colors.surface }]} />
     </View>
-    <View style={{ height: 16, width: '70%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5, marginBottom: 8 }} />
-    <View style={{ height: 12, width: '40%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+    <View style={{ marginTop: 'auto' }}>
+      <View style={{ height: 16, width: '70%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5, marginBottom: 6 }} />
+      <View style={{ height: 12, width: '40%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5, marginBottom: 12 }} />
+      <View style={{ height: 24, width: '30%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+    </View>
   </Shimmer>
 ));
 
@@ -316,14 +348,20 @@ export default function HomeScreen() {
       statusWarning: "#FFB800",
   }), [isDarkTheme]);
 
-  const fetchDashboardsAndNotifications = async () => {
+  const fetchDashboardsAndNotifications = async (showLoading = true) => {
     if (!userToken) return;
-    setDashboardsLoading(true);
+    if (showLoading) setDashboardsLoading(true);
     try {
       // Fetch in parallel
       const [dashboardsData, notificationsData] = await Promise.all([
-        api.getDashboards(),
-        api.getNotifications({ limit: 100, read: false }) // Fetch only unread notifications
+        api.getDashboards().catch(err => {
+          console.error("Failed to load dashboards:", err.message);
+          return [];
+        }),
+        api.getNotifications({ limit: 100, read: false }).catch(err => {
+          console.warn("Failed to load notifications:", err.message);
+          return { notifications: [] };
+        })
       ]);
 
       setDashboards(dashboardsData || []);
@@ -331,7 +369,7 @@ export default function HomeScreen() {
     } catch (err) {
       console.error("Home Screen fetch error:", err.message); // API service will handle 401
     } finally {
-      setDashboardsLoading(false);
+      if (showLoading) setDashboardsLoading(false);
     }
   };
 
@@ -344,7 +382,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchDashboardsAndNotifications();
+      await fetchDashboardsAndNotifications(false);
     } catch (error) {
       console.error("Failed to refresh home screen:", error);
     }
@@ -541,51 +579,55 @@ const styles = StyleSheet.create({
   },
   deviceCard: {
     width: (width - CARD_PADDING * 2 - CARD_GAP) / 2,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
+    minHeight: 140, // Increased height for better spacing
+    justifyContent: 'space-between',
   },
   deviceCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    alignItems: "flex-start",
   },
   deviceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
+  deviceInfo: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
   deviceName: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-    marginBottom: 4,
+    fontSize: moderateScale(15),
+    fontWeight: "700",
+    marginBottom: 2,
+    letterSpacing: -0.3,
   },
   deviceRoom: {
     fontSize: moderateScale(12),
-    marginBottom: 12,
+    textTransform: 'capitalize',
   },
-  deviceValue: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: "flex-start",
+  deviceBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 24,
   },
   deviceValueText: {
-    fontSize: moderateScale(13),
-    fontWeight: "600",
+    fontSize: moderateScale(18),
+    fontWeight: "700",
   },
   deviceStatus: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: 8,
-    alignSelf: "flex-start",
   },
   deviceStatusText: {
     fontSize: moderateScale(12),
-    fontWeight: "600",
+    fontWeight: "700",
   },
   chartCard: {
     borderRadius: 16,
