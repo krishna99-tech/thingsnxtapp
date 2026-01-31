@@ -27,39 +27,15 @@ import {
   WifiOff,
   X,
   Check,
+  Shield,
+  Clock,
+  ChevronRight,
+  Cpu,
 } from "lucide-react-native";
 import { showToast } from "../components/Toast";
 import CustomAlert from "../components/CustomAlert";
-
-// Helper to ensure dates are treated as UTC if missing timezone info
-const parseDate = (date) => {
-  if (!date) return null;
-  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
-    return new Date(date + 'Z');
-  }
-  return new Date(date);
-};
-
-const getDeviceStatus = (device) => {
-  if (!device) return "offline";
-  
-  // Trust explicit offline status from server/context
-  if (device.status === 'offline') return 'offline';
-
-  // Check last_active with 60s threshold
-  if (device.last_active) {
-    const lastActive = parseDate(device.last_active);
-    const now = new Date();
-    const secondsSinceActive = (now - lastActive) / 1000;
-    
-    if (secondsSinceActive > 60) {
-      return "offline";
-    }
-    return "online";
-  }
-  
-  return device.status || "offline";
-};
+import { getDeviceStatus, parseDate } from "../utils/device";
+import { getThemeColors, alpha } from "../utils/theme";
 
 
 export default function DevicesScreen({ navigation }) {
@@ -92,18 +68,7 @@ export default function DevicesScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
-  const Colors = {
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#CBD5E1",
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-  };
+  const Colors = useMemo(() => getThemeColors(isDarkTheme), [isDarkTheme]);
   
   const filteredDevices = useMemo(() => {
     return devices.map(d => ({
@@ -276,25 +241,43 @@ export default function DevicesScreen({ navigation }) {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <LinearGradient
-        colors={isDarkTheme ? ["#0A0E27", "#1A1F3A"] : ["#FFFFFF", "#F1F5F9"]}
+        colors={isDarkTheme ? ["#0F172A", "#1E293B"] : ["#FFFFFF", "#F8FAFC"]}
         style={styles.header}
       >
+        <View style={styles.headerDecoration}>
+          <View style={[styles.decorCircle, styles.decorCircle1]} />
+          <View style={[styles.decorCircle, styles.decorCircle2]} />
+        </View>
+
         <View style={styles.headerContent}>
           <View>
             <Text style={[styles.title, { color: Colors.text }]}>
               {isSelectionMode ? `${selectedDeviceIds.size} Selected` : "Devices"}
             </Text>
+            {!isSelectionMode && (
+              <Text style={[styles.subtitle, { color: Colors.textSecondary }]}>
+                {devices.length} Total IoT Units
+              </Text>
+            )}
           </View>
           {isSelectionMode ? (
             <TouchableOpacity 
-              style={[styles.addButton, { backgroundColor: Colors.surfaceLight }]} 
+              style={[styles.closeButton, { backgroundColor: alpha(Colors.primary, 0.1) }]} 
               onPress={toggleSelectionMode}
             >
-              <X size={24} color={Colors.text} />
+              <X size={24} color={Colors.primary} />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={[styles.addButton, { backgroundColor: Colors.primary }]} onPress={() => setAddDeviceModalVisible(true)}>
-              <Plus size={24} color={Colors.white} />
+            <TouchableOpacity 
+              style={[styles.addButton, { backgroundColor: Colors.primary }]} 
+              onPress={() => setAddDeviceModalVisible(true)}
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primary + 'CC']}
+                style={styles.addButtonGradient}
+              >
+                <Plus size={24} color="#FFF" />
+              </LinearGradient>
             </TouchableOpacity>
           )}
         </View>
@@ -378,7 +361,7 @@ export default function DevicesScreen({ navigation }) {
               style={[
                 styles.deviceItem,
                 { backgroundColor: Colors.surface, borderColor: isSelected ? Colors.primary : Colors.border },
-                isSelected && { backgroundColor: Colors.primary + '10' }
+                isSelected && { backgroundColor: alpha(Colors.primary, 0.08) }
               ]}
               onPress={() => {
                 if (isSelectionMode) {
@@ -396,7 +379,10 @@ export default function DevicesScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.deviceItemContent}>
-                <View style={[styles.deviceIcon, { backgroundColor: Colors.surfaceLight }]}>
+                <View style={[
+                  styles.deviceIconContainer, 
+                  { backgroundColor: status === 'online' ? alpha(Colors.primary, 0.12) : Colors.surfaceLight }
+                ]}>
                   {isSelectionMode ? (
                     isSelected ? <CheckCircle size={24} color={Colors.primary} /> : <Circle size={24} color={Colors.textMuted} />
                   ) : (
@@ -405,8 +391,19 @@ export default function DevicesScreen({ navigation }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.deviceName, { color: Colors.text }]}>{item.name}</Text>
-                  <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{item.type || 'Device'} • {status}</Text>
+                  <View style={styles.deviceMetaRow}>
+                    <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{item.type || 'Device'}</Text>
+                    <View style={[styles.statusDot, { backgroundColor: status === 'online' ? '#10B981' : '#64748B' }]} />
+                    <Text style={[styles.statusText, { color: status === 'online' ? '#10B981' : Colors.textSecondary }]}>
+                      {status.toUpperCase()}
+                    </Text>
+                  </View>
                 </View>
+                {!isSelectionMode && (
+                  <View style={[styles.chevronContainer, { backgroundColor: alpha(Colors.textSecondary, 0.08) }]}>
+                    <ChevronRight size={18} color={Colors.textSecondary} />
+                  </View>
+                )}
               </View>
             </TouchableOpacity>
           );
@@ -557,97 +554,164 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 60,
-    paddingBottom: 16,
+    paddingBottom: 24,
     paddingHorizontal: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  headerDecoration: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+  },
+  decorCircle1: {
+    width: 250,
+    height: 250,
+    top: -100,
+    right: -50,
+  },
+  decorCircle2: {
+    width: 150,
+    height: 150,
+    bottom: -50,
+    left: -30,
   },
   headerContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 24,
+    zIndex: 1,
   },
   title: {
-    fontSize: 32,
-    fontWeight: "700",
-    marginBottom: 4,
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: -1,
   },
   subtitle: {
     fontSize: 14,
+    fontWeight: "600",
+    opacity: 0.8,
+    marginTop: 2,
   },
   addButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  addButtonGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchContainer: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 20,
+    zIndex: 1,
+    paddingHorizontal: 2,
   },
   searchInputContainer: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
+    fontWeight: '500',
   },
   filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   filterScroll: {
     marginHorizontal: -20,
+    zIndex: 1,
   },
   filterScrollContent: {
     paddingHorizontal: 20,
-    gap: 8,
+    gap: 10,
+    paddingBottom: 4,
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingLeft: 16,
-    paddingRight: 12,
-    gap: 8,
-    borderWidth: 1,
+    borderRadius: 24,
+    paddingVertical: 10,
+    paddingLeft: 18,
+    paddingRight: 14,
+    gap: 10,
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
-  filterChipActive: {},
+  filterChipActive: {
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   filterChipText: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
   },
   filterChipTextActive: {},
   filterChipBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
   filterChipBadgeActive: {},
   filterChipBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "800",
   },
   filterChipBadgeTextActive: {},
   deviceItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
+    padding: 18,
+    borderRadius: 24,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   deviceItemContent: {
     flex: 1,
@@ -655,85 +719,123 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
-  deviceIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  deviceIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deviceName: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 2,
+  },
+  deviceMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   deviceType: {
-    fontSize: 14,
-    textTransform: 'capitalize',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  chevronContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   modalContent: {
     width: "90%",
-    borderRadius: 16,
-    padding: 20,
-    elevation: 5,
+    borderRadius: 28,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: "900",
+    marginBottom: 24,
     textAlign: "center",
+    letterSpacing: -0.5,
   },
   modalInput: {
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     fontSize: 16,
+    fontWeight: '600',
     marginBottom: 16,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 10,
+    gap: 12,
+    marginTop: 8,
   },
   modalBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 18,
     alignItems: "center",
-    marginHorizontal: 5,
   },
   modalBtnText: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   errorText: {
-    color: "#DC2626",
+    color: "#EF4444",
     fontSize: 12,
     marginTop: 4,
+    fontWeight: '600',
   },
   bulkActionBar: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    paddingBottom: 30,
+    bottom: 24,
+    left: 20,
+    right: 20,
+    padding: 16,
+    borderRadius: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
+    borderWidth: 1.5,
+    borderTopWidth: 1.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
     elevation: 10,
   },
   bulkActionBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

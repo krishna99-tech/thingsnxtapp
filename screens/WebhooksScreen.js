@@ -32,6 +32,7 @@ import {
 import { showToast } from '../components/Toast';
 import CustomAlert from '../components/CustomAlert';
 import * as Clipboard from 'expo-clipboard';
+import { getThemeColors, alpha } from '../utils/theme';
 
 export default function WebhooksScreen({ navigation }) {
   const { isDarkTheme } = useContext(AuthContext);
@@ -54,18 +55,7 @@ export default function WebhooksScreen({ navigation }) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  const Colors = {
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-    white: "#FFFFFF",
-  };
+  const Colors = getThemeColors(isDarkTheme);
 
   const fetchWebhooks = useCallback(async () => {
     try {
@@ -246,23 +236,40 @@ export default function WebhooksScreen({ navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <StatusBar 
+        barStyle={isDarkTheme ? "light-content" : "dark-content"} 
+        backgroundColor="transparent"
+        translucent
+      />
+      
+      {/* Immersive Decorative Header */}
       <LinearGradient
-        colors={isDarkTheme ? [Colors.surface, Colors.background] : ["#FFFFFF", "#F1F5F9"]}
-        style={[styles.header, { paddingTop: insets.top + 10 }]}
+        colors={[Colors.gradientStart, Colors.gradientEnd]}
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
+        <View style={styles.headerDecoration}>
+          <View style={[styles.decorCircle, styles.decorCircle1]} />
+          <View style={[styles.decorCircle, styles.decorCircle2]} />
+        </View>
+
         <View style={styles.headerContent}>
           <TouchableOpacity 
             onPress={() => navigation.goBack()} 
-            style={[styles.backButton, { backgroundColor: Colors.surfaceLight }]}
+            style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
           >
-            <ChevronLeft size={24} color={Colors.text} />
+            <ChevronLeft size={24} color="#FFF" />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: Colors.text }]}>Webhooks</Text>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Webhooks</Text>
+            <Text style={styles.headerSubtitle}>Manage real-time events</Text>
+          </View>
           <TouchableOpacity 
             onPress={() => handleOpenModal()} 
-            style={[styles.addButton, { backgroundColor: Colors.primary }]}
+            style={[styles.addButton, { backgroundColor: Colors.white }]}
           >
-            <Plus size={24} color={Colors.white} />
+            <Plus size={24} color={Colors.primary} strokeWidth={3} />
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -411,37 +418,69 @@ export default function WebhooksScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
+    paddingBottom: 24,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    position: 'relative',
+    overflow: 'hidden',
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    zIndex: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  headerDecoration: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  decorCircle1: {
+    width: 250,
+    height: 250,
+    top: -100,
+    right: -50,
+  },
+  decorCircle2: {
+    width: 150,
+    height: 150,
+    bottom: -50,
+    left: -30,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 1,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerTitleContainer: {
+    alignItems: 'center',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -461,38 +500,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '900',
     marginTop: 20,
     marginBottom: 8,
+    letterSpacing: -0.5,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 24,
+    fontWeight: '500',
   },
   createButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   createButtonText: {
     color: '#FFF',
-    fontWeight: '600',
+    fontWeight: '800',
     fontSize: 16,
   },
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 24,
+    borderWidth: 1.5,
     marginBottom: 16,
     overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 18,
   },
   urlContainer: {
     flex: 1,
@@ -501,154 +552,177 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   methodBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginRight: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginRight: 10,
   },
   methodText: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
   urlText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 12,
-    gap: 4,
+    gap: 6,
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   cardBody: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
   },
   infoRow: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   label: {
     fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
   eventsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   eventChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
   eventText: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 20,
   },
   statsText: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    borderTopWidth: 1,
+    padding: 14,
+    borderTopWidth: 1.5,
   },
   rightActions: {
     flexDirection: 'row',
+    gap: 8,
   },
   actionButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Modal Styles
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingTop: 12,
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingBottom: 24,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
   modalBody: {
-    paddingHorizontal: 20,
+    marginBottom: 24,
   },
   inputGroup: {
     marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontWeight: '800',
+    marginBottom: 10,
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 16,
     fontSize: 16,
+    fontWeight: '600',
   },
   helperText: {
     fontSize: 12,
-    marginTop: 6,
+    marginTop: 8,
+    fontWeight: '600',
+    fontStyle: 'italic',
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
+    paddingVertical: 10,
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
+    paddingTop: 20,
+    borderTopWidth: 1.5,
     gap: 12,
   },
   cancelButton: {
     flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    padding: 18,
+    borderRadius: 18,
+    borderWidth: 1.5,
     alignItems: 'center',
   },
   cancelButtonText: {
-    fontWeight: '600',
+    fontWeight: '800',
     fontSize: 16,
   },
   saveButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
+    flex: 2,
+    padding: 18,
+    borderRadius: 18,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonText: {
     color: '#FFF',
-    fontWeight: '600',
+    fontWeight: '900',
     fontSize: 16,
   },
 });

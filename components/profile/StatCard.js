@@ -1,103 +1,96 @@
-// StatCard.js - Static version
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+const { width } = Dimensions.get('window');
+
 const StatCard = ({ icon, value, label, colors, isDarkTheme, loading, style }) => {
-  // Fallback colors to prevent gradient errors
-  const gradientColors = colors && colors.length >= 2 ? colors : ['#FFFFFF', '#FFFFFF'];
-  
+  // Use a softer internal palette if colors aren't provided
+  const Colors = {
+    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
+    text: isDarkTheme ? "#F8FAFC" : "#0F172A",
+    textSecondary: isDarkTheme ? "#94A3B8" : "#64748B",
+    surface: isDarkTheme ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.8)",
+  };
+
+  const alpha = (hex, opacity) => {
+    const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
+    return hex + o;
+  };
+
   return (
     <View style={[
-      styles.container, 
-      { 
-        shadowColor: isDarkTheme ? "#000" : "#64748B",
-        backgroundColor: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-        borderColor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
-      },
-      style // Support for flexBasis or margins passed from parent
+      styles.statCard,
+      { backgroundColor: Colors.surface },
+      style
     ]}>
-      <LinearGradient
-        colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
-      >
-        <View style={[
-          styles.iconWrapper, 
-          { backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }
-        ]}>
-          {icon}
-        </View>
-        
-        <View style={styles.textContainer}>
-          {loading ? (
-            <ActivityIndicator 
-              size="small" 
-              color={isDarkTheme ? "#00D9FF" : "#3B82F6"} 
-              style={styles.loader} 
-            />
-          ) : (
-            <Text 
-              style={[styles.value, { color: isDarkTheme ? "#FFFFFF" : "#1E293B" }]} 
-              numberOfLines={1}
-            >
-              {value}
-            </Text>
-          )}
-          <Text 
-            style={[styles.label, { color: isDarkTheme ? "#8B91A7" : "#64748B" }]} 
-            numberOfLines={1}
-          >
-            {label}
+      <View style={[
+        styles.statIconContainer, 
+        { backgroundColor: alpha(colors?.[0] || Colors.primary, 0.1) }
+      ]}>
+        {React.cloneElement(icon, { 
+          size: 22, 
+          color: colors?.[0] || Colors.primary,
+          strokeWidth: 2 
+        })}
+      </View>
+      
+      {loading ? (
+        <ActivityIndicator size="small" color={colors?.[0] || Colors.primary} style={styles.loader} />
+      ) : (
+        <View style={styles.statValueRow}>
+          <Text style={[styles.statValue, { color: Colors.text }]}>
+            {value}
           </Text>
         </View>
-      </LinearGradient>
+      )}
+      
+      <Text style={[styles.statLabel, { color: Colors.textSecondary }]}>
+        {label}
+      </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    width: '48%', // Default width for grid layout
+  statCard: {
+    width: (width - 52) / 2, // 2-column grid with gap
     borderRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
+    padding: 18,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1,
+    elevation: 3,
   },
-  gradient: {
-    padding: 16,
-    borderRadius: 20,
-    height: 120, // Slightly more compact
-    justifyContent: 'space-between',
-  },
-  iconWrapper: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
   },
-  textContainer: {
-    marginTop: 8,
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
   },
-  value: {
+  statValue: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
     marginBottom: 2,
-    letterSpacing: -0.5,
   },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+  statLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   loader: {
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-    marginTop: 4,
+    marginVertical: 4,
   }
 });
 

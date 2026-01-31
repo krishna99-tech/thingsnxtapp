@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Eye, EyeOff, Lock } from 'lucide-react-native';
 
 const ProfileInfoRow = ({
   icon,
@@ -18,6 +18,7 @@ const ProfileInfoRow = ({
   editable = true
 }) => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(!secureTextEntry);
+  const [isFocused, setIsFocused] = useState(false);
 
   const togglePasswordVisibility = () => {
     setIsPasswordVisible(!isPasswordVisible);
@@ -28,18 +29,36 @@ const ProfileInfoRow = ({
   return (
     <View style={[
       styles.container, 
-      { borderBottomColor: Colors.border },
+      { 
+        borderBottomColor: Colors.borderLight || Colors.border,
+        backgroundColor: isFocused ? (Colors.isDarkTheme ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)') : 'transparent'
+      },
       { alignItems: multiline ? 'flex-start' : 'center' }
     ]}>
-      <View style={[styles.iconContainer, multiline && styles.iconContainerMultiline]}>
+      <View style={[
+        styles.iconContainer, 
+        multiline && styles.iconContainerMultiline,
+        { backgroundColor: isEditing && editable ? (Colors.isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') : 'transparent' }
+      ]}>
         {icon}
       </View>
       
       <View style={styles.contentContainer}>
-        <Text style={[styles.label, { color: Colors.textSecondary }]}>{label}</Text>
+        <View style={styles.labelRow}>
+          <Text style={[styles.label, { color: Colors.textSecondary }]}>{label}</Text>
+          {isEditing && !editable && (
+            <View style={styles.lockedBadge}>
+              <Lock size={10} color={Colors.textSecondary} />
+              <Text style={[styles.lockedText, { color: Colors.textSecondary }]}>LOCKED</Text>
+            </View>
+          )}
+        </View>
         
         {isEditing && editable ? (
-          <View style={styles.inputWrapper}>
+          <View style={[
+            styles.inputWrapper,
+            isFocused && { borderBottomColor: Colors.primary, borderBottomWidth: 1 }
+          ]}>
             <TextInput
               style={[
                 styles.input,
@@ -49,12 +68,14 @@ const ProfileInfoRow = ({
               value={value}
               onChangeText={onChangeText}
               placeholder={placeholder}
-              placeholderTextColor={Colors.textSecondary + '80'}
+              placeholderTextColor={Colors.textSecondary + '60'}
               keyboardType={keyboardType}
               secureTextEntry={shouldSecureText}
               multiline={multiline}
               numberOfLines={numberOfLines}
               maxLength={maxLength}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
               textAlignVertical={multiline ? 'top' : 'center'}
               editable={editable}
             />
@@ -66,17 +87,21 @@ const ProfileInfoRow = ({
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {isPasswordVisible ? (
-                  <EyeOff size={20} color={Colors.textSecondary} />
+                  <EyeOff size={18} color={Colors.textSecondary} />
                 ) : (
-                  <Eye size={20} color={Colors.textSecondary} />
+                  <Eye size={18} color={Colors.textSecondary} />
                 )}
               </TouchableOpacity>
             )}
           </View>
         ) : (
           <Text 
-            style={[styles.value, { color: Colors.text }]}
-            numberOfLines={multiline ? numberOfLines : 1}
+            style={[
+              styles.value, 
+              { color: isEditing && !editable ? Colors.textSecondary : Colors.text },
+              multiline && { lineHeight: 22 }
+            ]}
+            numberOfLines={multiline ? undefined : 1}
           >
             {value || placeholder || 'Not set'}
           </Text>
@@ -89,47 +114,72 @@ const ProfileInfoRow = ({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    paddingVertical: 16,
+    paddingVertical: 18,
     paddingHorizontal: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   iconContainer: {
     marginRight: 16,
-    width: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   iconContainerMultiline: {
     marginTop: 2,
   },
   contentContainer: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+  },
+  lockedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  lockedText: {
+    fontSize: 9,
+    fontWeight: '800',
   },
   value: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 28,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     padding: 0,
-    minHeight: 24,
+    margin: 0,
+    letterSpacing: 0.2,
   },
   multilineInput: {
-    minHeight: 60,
+    minHeight: 80,
     textAlignVertical: 'top',
-    paddingTop: 0,
+    paddingTop: 4,
   },
   eyeButton: {
     padding: 4,

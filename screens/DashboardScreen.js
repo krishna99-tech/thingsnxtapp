@@ -29,6 +29,28 @@ import WidgetSkeleton from "../components/WidgetSkeleton";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
 import { moderateScale } from "../utils/scaling";
+import { 
+  Bell, 
+  Plus, 
+  ChevronLeft, 
+  Trash2, 
+  Layout, 
+  Clock, 
+  MoreVertical,
+  Layers,
+  Search,
+  Zap,
+  Save,
+  X,
+  PlusCircle,
+  Lightbulb,
+  Edit2,
+  Check
+} from "lucide-react-native";
+const alpha = (hex, opacity) => {
+  const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
+  return hex + o;
+};
 
 // --- Responsive Grid Constants ---
 const { width: screenWidth } = Dimensions.get("window");
@@ -58,24 +80,34 @@ function DashboardContent({ route, navigation }) {
   const [numColumns, setNumColumns] = useState(calculateNumColumns());
   const baseItemHeight = useMemo(() => screenWidth / numColumns * 0.85, [numColumns]);
 
-  // Theme-based styles
-  const themeStyles = useMemo(() => ({
-    gradient: isDarkTheme ? ["#0f2027", "#203a43", "#2c5364"] : ["#e6f3ff", "#ffffff"],
-    header: {
-      backgroundColor: isDarkTheme ? "rgba(0,0,0,0.3)" : "#ffffffcc",
-    },
-    title: { color: isDarkTheme ? "#FFFFFF" : "#111" },
-    subtitle: { color: isDarkTheme ? "#CCCCCC" : "#555" },
-    // Add modal styles back for AddLedWidgetModal
-    modalCard: { backgroundColor: isDarkTheme ? "#2C2C2C" : "#fff" },
-    modalTitle: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
-    modalSubtitle: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
-    modalLabel: { color: isDarkTheme ? "#E0E0E0" : "#1f2937" },
-    deviceRow: { backgroundColor: isDarkTheme ? "#1E1E1E" : "#f8fafc" },
-    deviceName: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
-    deviceToken: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
-    input: { color: isDarkTheme ? "#FFFFFF" : "#111827", borderColor: isDarkTheme ? "#444" : "#cbd5f5" },
+  // Theme-aware Colors (Elite Style)
+  const Colors = useMemo(() => ({
+    background: isDarkTheme ? "#0A0E27" : "#F8FAFC",
+    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+    card: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
+    cardBorder: isDarkTheme ? "#252B4A" : "#E2E8F0",
+    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
+    secondary: isDarkTheme ? "#A855F7" : "#8B5CF6",
+    success: isDarkTheme ? "#10B981" : "#16A34A",
+    warning: isDarkTheme ? "#F59E0B" : "#F59E0B",
+    danger: isDarkTheme ? "#EF4444" : "#DC2626",
+    text: isDarkTheme ? "#F8FAFC" : "#0F172A",
+    textSecondary: isDarkTheme ? "#94A3B8" : "#64748B",
+    gradientStart: isDarkTheme ? "#6366F1" : "#3B82F6",
+    gradientEnd: isDarkTheme ? "#8B5CF6" : "#6366F1",
+    white: "#FFFFFF",
   }), [isDarkTheme]);
+
+  const themeStyles = useMemo(() => ({
+    modalCard: { backgroundColor: Colors.surface },
+    modalTitle: { color: Colors.text },
+    modalSubtitle: { color: Colors.textSecondary },
+    modalLabel: { color: Colors.textSecondary },
+    deviceRow: { backgroundColor: isDarkTheme ? alpha(Colors.primary, 0.05) : "#f8fafc" },
+    deviceName: { color: Colors.text },
+    deviceToken: { color: Colors.textSecondary },
+    input: { color: Colors.text, borderColor: Colors.cardBorder },
+  }), [isDarkTheme, Colors]);
 
   // --- Handle screen dimension changes ---
   useEffect(() => {
@@ -242,51 +274,79 @@ function DashboardContent({ route, navigation }) {
 
   if (loading) {
     return (
-      <LinearGradient colors={themeStyles.gradient} style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
-      </LinearGradient>
+      <View style={[styles.container, { backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={[styles.loadingText, { color: Colors.textSecondary }]}>Powering up dashboard...</Text>
+      </View>
     );
   }
 
   return (
-    <LinearGradient colors={themeStyles.gradient} style={styles.container}>
-      <View style={[styles.header, themeStyles.header, { paddingTop: insets.top + 10 }]}>
-        <View>
-          <Text style={[styles.title, themeStyles.title]}>{dashboard?.name || "Dashboard"}</Text>
-          <Text style={[styles.subtitle, themeStyles.subtitle]}>
-            {dashboard?.description || "Monitor your devices"}
-          </Text>
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      {/* 🌈 Elite Header */}
+      <LinearGradient
+        colors={[Colors.gradientStart, Colors.gradientEnd]}
+        style={[styles.header, { paddingTop: insets.top + 20 }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        {/* Decorative Elements */}
+        <View style={styles.headerDecoration}>
+          <View style={[styles.decorCircle, styles.circle1]} />
+          <View style={[styles.decorCircle, styles.circle2]} />
         </View>
-        <View style={styles.headerActions}>
-          {editMode ? (
-            <TouchableOpacity style={styles.headerActionBtn} onPress={handleSaveLayout}>
-              <Ionicons name="save-outline" size={22} color="#0369a1" />
-              <Text style={[styles.headerActionText, hasChanges && {fontWeight: 'bold'}]}>
-                {hasChanges ? "Save Layout" : "Done"}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.headerActionBtn} onPress={handleOpenAddLed}>
-              <Ionicons name="bulb-outline" size={22} color="#0369a1" />
-              <Text style={styles.headerActionText}>Add Button</Text>
-            </TouchableOpacity>
-          )}
 
-          <Pressable
-            style={styles.headerIconBtn}
-            onPress={() => setEditMode(!editMode)}
-          >
-            <Ionicons name={editMode ? "close-circle" : "create-outline"} size={26} color={editMode ? "#ff3b30" : "#007AFF"} />
-          </Pressable>
-          <TouchableOpacity
-            style={styles.headerIconBtn}
-            onPress={handleDeleteDashboard}
-          >
-            <Ionicons name="trash-outline" size={26} color="#ff3b30" />
-          </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity 
+              onPress={() => navigation.goBack()}
+              style={styles.headerBtn}
+            >
+              <ChevronLeft size={24} color="#FFF" strokeWidth={3} />
+            </TouchableOpacity>
+
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle}>{dashboard?.name || "Dashboard"}</Text>
+              <Text style={styles.headerSubtitle}>{widgets.length} ACTIVE WIDGETS</Text>
+            </View>
+
+            <View style={styles.headerActions}>
+              {editMode ? (
+                <TouchableOpacity 
+                  style={[styles.headerBtn, hasChanges && {backgroundColor: 'rgba(255,255,255,0.3)'}]} 
+                  onPress={handleSaveLayout}
+                >
+                  <Save size={20} color="#FFF" strokeWidth={2.5} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.headerBtn} onPress={handleOpenAddLed}>
+                  <PlusCircle size={20} color="#FFF" strokeWidth={2.5} />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.headerBtn, editMode && {backgroundColor: 'rgba(255,100,100,0.3)'}]}
+                onPress={() => setEditMode(!editMode)}
+              >
+                {editMode ? (
+                  <X size={20} color="#FFF" strokeWidth={2.5} />
+                ) : (
+                  <Edit2 size={20} color="#FFF" strokeWidth={2.5} />
+                )}
+              </TouchableOpacity>
+              
+              {!editMode && (
+                <TouchableOpacity
+                  style={[styles.headerBtn, {backgroundColor: 'rgba(255,100,100,0.15)'}]}
+                  onPress={handleDeleteDashboard}
+                >
+                  <Trash2 size={20} color="#FFF" strokeWidth={2.5} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
         <ScrollView
@@ -318,8 +378,13 @@ function DashboardContent({ route, navigation }) {
             />
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="bulb-outline" size={50} color="#666" />
-              <Text style={styles.placeholder}>No widgets yet. Tap the bulb icon to add one.</Text>
+              <View style={styles.emptyIconWrapper}>
+                <Lightbulb size={48} color={Colors.primary} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: Colors.text }]}>No widgets found</Text>
+              <Text style={[styles.emptySubtitle, { color: Colors.textSecondary }]}>
+                Tap the bulb icon in the header to add your first interactive widget to this dashboard.
+              </Text>
             </View>
           )}
         </ScrollView>
@@ -349,7 +414,7 @@ function DashboardContent({ route, navigation }) {
         isDarkTheme={isDarkTheme}
         {...alertConfig}
       />
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -372,94 +437,125 @@ export default memo(DashboardScreen, (prevProps, nextProps) => {
 
 // 💅 Styles
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
+  
+  // Header
   header: {
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    backgroundColor: "#ffffffcc",
-    elevation: 6,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  title: { fontSize: moderateScale(26), fontWeight: "bold", color: "#111" },
-  subtitle: { fontSize: 14, color: "#555", marginTop: 4 },
-  headerActions: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: 'space-between', 
-    marginTop: 8, 
-    gap: 12 
+  headerDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  headerActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  circle1: {
+    width: 200,
+    height: 200,
+    top: -50,
+    right: -40,
+  },
+  circle2: {
+    width: 120,
+    height: 120,
+    bottom: -30,
+    left: -20,
+  },
+  headerContent: {
+    zIndex: 1,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerBtn: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerActionText: {
-    marginLeft: 6,
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#0369a1",
+  headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
   },
-  headerIconBtn: { padding: 6 },
-  widgetWrapper: { height: 150, padding: 6 },
-  widgetWrapperLarge: { width: '100%' },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  // Content
+  loader: {
+    marginTop: 80,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 12,
+  },
+  gridContent: {
+    padding: 10,
+    paddingBottom: 40,
+  },
+  widgetWrapper: {
+    padding: 6,
+  },
+
+  // Empty State
   emptyContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 50,
-  },
-  placeholder: {
-    textAlign: "center",
-    color: "#666",
-    fontSize: 16,
-    fontStyle: "italic",
-    marginTop: 10,
-  },
-  loader: { marginTop: 80 },
-  loadingText: { color: "#666", textAlign: "center", marginTop: 10 },
-  editOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 12,
-    justifyContent: 'center',
     alignItems: 'center',
-  },
-  resizeHandleWidth: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 122, 255, 0.8)',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 100,
   },
-  resizeHandleHeight: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    backgroundColor: 'rgba(0, 122, 255, 0.8)',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    justifyContent: 'center',
+  emptyIconWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 24,
   },
-  deleteHandle: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(255, 59, 48, 0.8)',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });

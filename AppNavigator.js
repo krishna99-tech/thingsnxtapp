@@ -175,6 +175,7 @@ export default function RootNavigator() {
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="ConnectedApps" component={ConnectedAppsScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="Webhooks" component={WebhooksScreen} options={{ presentation: 'modal' }} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ presentation: 'modal'}} />
             
             {/* Custom Transparent Bottom Sheet Screen */}
             <Stack.Screen 

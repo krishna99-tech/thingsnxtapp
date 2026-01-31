@@ -11,7 +11,11 @@ import {
   FlatList,
   Pressable,
   PermissionsAndroid,
+  Dimensions,
+  StatusBar,
+  SafeAreaView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
 import CustomAlert from "../components/CustomAlert";
@@ -39,12 +43,24 @@ import {
   FileCode,
   Code,
   X,
+  Shield,
 } from "lucide-react-native";
 import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
 import WidgetRenderer from "../components/widgets/WidgetRenderer";
 import DeviceDetailSkeleton from "../components/Devices/DeviceDetailSkeleton";
+import { getDeviceStatus, parseDate } from "../utils/device";
 import { BASE_URL } from "../constants/config";
+
+const { width } = Dimensions.get('window');
+const CARD_PADDING = 20;
+const CARD_GAP = 14;
+
+// Utility for colors
+const alpha = (hex, opacity) => {
+  const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
+  return hex + o;
+};
 
 const COLORS = {
   background: "#0A0E27",
@@ -82,14 +98,7 @@ function getSensorIcon(type, size, color) {
   }
 }
 
-// Helper to ensure dates are treated as UTC if missing timezone info
-const parseDate = (date) => {
-  if (!date) return null;
-  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
-    return new Date(date + 'Z');
-  }
-  return new Date(date);
-};
+// getTimeSince is specific to this screen's details and uses the central parseDate helper
 
 function getTimeSince(date) {
   if (!date) return "never";
@@ -105,14 +114,29 @@ function getTimeSince(date) {
 // --- Memoized Sensor Card Component ---
 const SensorCard = React.memo(({ sensor, onPress, Colors }) => (
   <TouchableOpacity
-    style={[styles.sensorCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}
-    activeOpacity={0.7}
+    style={[styles.sensorCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}
+    activeOpacity={0.8}
     onPress={() => onPress(sensor)}
   >
+    <LinearGradient
+      colors={[alpha(Colors.primary, 0.05), 'transparent']}
+      style={styles.notifGlow}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    />
+    
     <View style={styles.sensorHeader}>
-      <Text style={[styles.sensorLabel, { color: Colors.textSecondary }]} numberOfLines={1}>{sensor.label}</Text>
-      <View style={[styles.sensorIconContainer, { backgroundColor: `${Colors.primary}15` }]}>
+      <View style={[styles.sensorIconContainer, { backgroundColor: alpha(Colors.primary, 0.12) }]}>
         {getSensorIcon(sensor.type, 20, Colors.primary)}
+      </View>
+      <View style={styles.sensorHeaderInfo}>
+        <Text style={[styles.sensorLabel, { color: Colors.textSecondary }]} numberOfLines={1}>{sensor.label}</Text>
+        <View style={styles.timeContainer}>
+          <Clock size={10} color={Colors.textSecondary} />
+          <Text style={[styles.sensorTimestamp, { color: Colors.textSecondary }]}>
+            {getTimeSince(sensor.timestamp)}
+          </Text>
+        </View>
       </View>
     </View>
     
@@ -121,14 +145,7 @@ const SensorCard = React.memo(({ sensor, onPress, Colors }) => (
         {typeof sensor.value === "number"
           ? sensor.value.toFixed(sensor.type === "temperature" ? 1 : 0)
           : String(sensor.value)}
-        <Text style={[styles.sensorUnit, { color: Colors.textSecondary }]}>{sensor.unit}</Text>
-      </Text>
-    </View>
-    
-    <View style={styles.sensorFooter}>
-      <Clock size={12} color={Colors.textSecondary} style={{ marginRight: 4 }} />
-      <Text style={[styles.sensorTimestamp, { color: Colors.textSecondary }]}>
-        {getTimeSince(sensor.timestamp)}
+        <Text style={[styles.sensorUnit, { color: Colors.primary }]}> {sensor.unit}</Text>
       </Text>
     </View>
   </TouchableOpacity>
@@ -149,6 +166,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   const [tick, setTick] = useState(0);
+  const insets = useSafeAreaInsets();
 
   // Force refresh every 5 seconds to update relative times/statuses
   useEffect(() => {
@@ -166,18 +184,21 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
   // --- Theme-aware Colors ---
   const Colors = useMemo(() => ({
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
+    background: isDarkTheme ? "#0A0E27" : "#F8FAFC",
+    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
     card: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
     cardBorder: isDarkTheme ? "#252B4A" : "#E2E8F0",
     primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    warning: isDarkTheme ? "#FFB800" : "#F59E0B",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    online: "#00FF88",
-    offline: "#FF3366",
+    secondary: isDarkTheme ? "#A855F7" : "#8B5CF6",
+    success: isDarkTheme ? "#10B981" : "#16A34A",
+    warning: isDarkTheme ? "#F59E0B" : "#F59E0B",
+    danger: isDarkTheme ? "#EF4444" : "#DC2626",
+    text: isDarkTheme ? "#F8FAFC" : "#0F172A",
+    textSecondary: isDarkTheme ? "#94A3B8" : "#64748B",
+    online: "#10B981",
+    offline: "#EF4444",
+    gradientStart: isDarkTheme ? "#6366F1" : "#3B82F6",
+    gradientEnd: isDarkTheme ? "#8B5CF6" : "#6366F1",
   }), [isDarkTheme]);
 
   const device = devices.find((d) => String(d.id || d._id) === String(deviceId));
@@ -296,29 +317,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
     setAlertVisible(true);
   }, [deleteDevice, device, navigation]);
 
-  // Set header options, including buttons with stable callbacks
+  // Set header options
   useEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          {/* Code Examples Button - More visible */}
-          <TouchableOpacity 
-            onPress={() => setCodeModalVisible(true)} 
-            style={[styles.headerButton, styles.codeButton]}
-            accessibilityLabel="View integration code examples"
-          >
-            <FileCode size={20} color={Colors.primary} />
-          </TouchableOpacity>
-          {/* Favorite Button (New Feature) */}
-          <TouchableOpacity onPress={() => setIsFavorite(!isFavorite)} style={styles.headerButton}>
-            <Star size={22} color={isFavorite ? Colors.warning : Colors.primary} fill={isFavorite ? Colors.warning : 'transparent'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}><RefreshCw size={20} color={Colors.primary} /></TouchableOpacity>
-          <TouchableOpacity onPress={handleDeleteDevice} style={styles.headerButton}><Trash2 size={20} color={Colors.danger} /></TouchableOpacity>
-        </View>
-      ),
+      headerShown: false,
     });
-  }, [navigation, handleRefresh, handleDeleteDevice, Colors, isFavorite]);
+  }, [navigation]);
 
   const handleSensorPress = useCallback((sensor) => {
     setSelectedSensor(sensor);
@@ -419,6 +423,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -426,109 +432,162 @@ export default function DeviceDetailScreen({ route, navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={Colors.primary}
+            tintColor="#FFFFFF"
           />
         }
       >
-        <View style={[styles.statusCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}>
-          <View style={styles.statusHeader}>
-            <View style={[styles.deviceIcon, { backgroundColor: `${Colors.primary}1A` }]}>
-              <Cpu size={32} color={Colors.primary} />
+        {/* Immersive Hero Header */}
+        <LinearGradient
+          colors={[Colors.gradientStart, Colors.gradientEnd]}
+          style={[styles.heroSection, { paddingTop: insets.top + 10 }]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {/* Decorative Elements */}
+          <View style={styles.heroDecoration}>
+            <View style={[styles.decorCircle, styles.circle1]} />
+            <View style={[styles.decorCircle, styles.circle2]} />
+          </View>
+
+          <View style={styles.heroHeader}>
+            <TouchableOpacity 
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <X size={24} color="#FFF" />
+            </TouchableOpacity>
+            
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => setIsFavorite(!isFavorite)} style={styles.actionButton}>
+                <Star size={22} color={isFavorite ? Colors.warning : "#FFFFFF"} fill={isFavorite ? Colors.warning : 'transparent'} strokeWidth={2.5} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setCodeModalVisible(true)} style={styles.actionButton}>
+                <FileCode size={22} color="#FFFFFF" strokeWidth={2.5} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRefresh} style={styles.actionButton}>
+                <RefreshCw size={22} color="#FFFFFF" strokeWidth={2.5} />
+              </TouchableOpacity>
             </View>
-            <View style={styles.statusInfo}>
-              <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
-                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.statusText, { color: statusColor }]}>
-                  {actualStatus.toUpperCase()}
-                </Text>
+          </View>
+
+          <View style={styles.heroContent}>
+            <View style={styles.heroIconWrapper}>
+              <Cpu size={32} color="#FFFFFF" strokeWidth={2.5} />
+            </View>
+            <View style={styles.heroTextContent}>
+              <Text style={styles.heroTitleName} numberOfLines={1}>{device.name}</Text>
+              <View style={styles.heroMeta}>
+                <View style={[styles.statusBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                  <Text style={styles.statusText}>{actualStatus.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.heroType}>{device.type}</Text>
               </View>
-              <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{device.type}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.contentBody}>
+          {/* Device Registry (ID & Token) */}
+          <View style={styles.registrySection}>
+            <View style={[styles.registryCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
+              <LinearGradient
+                colors={[alpha(Colors.primary, 0.08), 'transparent']}
+                style={styles.cardGlow}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <View style={styles.registryHeader}>
+                <View style={[styles.iconBox, { backgroundColor: alpha(Colors.primary, 0.12) }]}>
+                  <Shield size={18} color={Colors.primary} strokeWidth={2.5} />
+                </View>
+                <View>
+                  <Text style={[styles.registryTitle, { color: Colors.text }]}>Identity & Security</Text>
+                  <Text style={[styles.registrySubtitle, { color: Colors.textSecondary }]}>Device cryptographic identifiers</Text>
+                </View>
+              </View>
+              
+              <View style={styles.registryDetails}>
+                <View style={styles.registryItem}>
+                  <Text style={[styles.registryLabel, { color: Colors.textSecondary }]}>DEVICE REGISTRY ID</Text>
+                  <TouchableOpacity 
+                    style={[styles.registryValueBox, { backgroundColor: alpha(Colors.primary, 0.05) }]}
+                    onPress={() => { Clipboard.setStringAsync(String(device._id || device.id)); showToast.success('ID copied!'); }}
+                  >
+                    <Text style={[styles.registryValue, { color: Colors.text }]} numberOfLines={1} ellipsizeMode="middle">
+                      {String(device._id || device.id)}
+                    </Text>
+                    <Copy size={16} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.registryItem}>
+                  <Text style={[styles.registryLabel, { color: Colors.textSecondary }]}>AUTHENTICATION TOKEN</Text>
+                  <TouchableOpacity 
+                    style={[styles.registryValueBox, { backgroundColor: alpha(Colors.primary, 0.05) }]}
+                    onPress={handleCopyToken}
+                  >
+                    <Text style={[styles.registryValue, { color: Colors.primary }]} numberOfLines={1} ellipsizeMode="middle">
+                      {device.device_token}
+                    </Text>
+                    <Copy size={16} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           </View>
 
-          <View style={[styles.divider, { backgroundColor: Colors.cardBorder, marginVertical: 16 }]} />
-
-          <View style={styles.infoGrid}>
-            <View style={styles.infoItem}>
-              <MapPin size={16} color={Colors.textSecondary} />
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Location</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>{device.location || "Not set"}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Clock size={16} color={Colors.textSecondary} />
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Last Seen</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>{getTimeSince(device.last_active)}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Wifi size={16} color={Colors.textSecondary} />
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>IP Address</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>{device.ipAddress || "Unknown"}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Activity size={16} color={Colors.textSecondary} />
-              <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>Firmware</Text>
-              <Text style={[styles.infoValue, { color: Colors.text }]}>
-                {device.firmwareVersion || "Unknown"}
-              </Text>
+          {/* Device Info Grid */}
+          <View style={styles.infoSection}>
+            <View style={styles.infoGrid}>
+              <View style={[styles.infoCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
+                <MapPin size={18} color={Colors.primary} />
+                <View>
+                  <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>LOCATION</Text>
+                  <Text style={[styles.infoValue, { color: Colors.text }]}>{device.location || "Not set"}</Text>
+                </View>
+              </View>
+              <View style={[styles.infoCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
+                <Clock size={18} color={Colors.primary} />
+                <View>
+                  <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>LAST SEEN</Text>
+                  <Text style={[styles.infoValue, { color: Colors.text }]}>{getTimeSince(device.last_active)}</Text>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={[styles.section]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Device ID & Access Token</Text>
-          </View>
-          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, shadowColor: Colors.primary }]}>
-            {/* Device ID row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: `${Colors.primary}06`, borderRadius: 12, borderWidth: 1, borderColor: `${Colors.primary}30`, marginBottom: 8 }}>
-              <Text selectable style={{ flex: 1, color: Colors.text, fontFamily: 'monospace', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 }} numberOfLines={1} ellipsizeMode="middle">
-                {String(device._id || device.id)}
-              </Text>
-              <TouchableOpacity onPress={() => { Clipboard.setStringAsync(String(device._id || device.id)); showToast.success('Device ID copied!'); }} style={{ padding: 7, backgroundColor: `${Colors.primary}22`, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
-                <Copy size={18} color={Colors.primary} />
-              </TouchableOpacity>
-              <Text style={{ color: Colors.textSecondary, fontSize: 13, marginLeft: 3, fontWeight: '700', letterSpacing: 2 }}>ID</Text>
+          {/* Sensors Section */}
+          <View style={styles.sensorsSection}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Activity size={20} color={Colors.primary} />
+                <Text style={[styles.sectionTitle, { color: Colors.text }]}>Active Telemetry</Text>
+              </View>
+              <Text style={[styles.sensorCount, { color: Colors.textSecondary }]}>{sensors.length} SENSORS</Text>
             </View>
-
-            {/* Device Token row (styled to match) */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: `${Colors.primary}09`, borderRadius: 12, borderWidth: 1, borderColor: `${Colors.primary}40` }}>
-              <Text selectable style={{ flex: 1, color: Colors.primary, fontFamily: 'monospace', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 }} numberOfLines={1} ellipsizeMode="middle">
-                {device.device_token}
-              </Text>
-              <TouchableOpacity onPress={handleCopyToken} style={{ padding: 7, backgroundColor: `${Colors.primary}31`, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
-                <Copy size={18} color={Colors.primary} />
-              </TouchableOpacity>
-              <Text style={{ color: Colors.textSecondary, fontSize: 13, marginLeft: 3, fontWeight: '700', letterSpacing: 2 }}>TOKEN</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>
-              Sensors ({sensors.length})
-            </Text>
-          </View>
-          <FlatList
-            data={sensors}
-            renderItem={({ item }) => (
-              <SensorCard sensor={item} onPress={handleSensorPress} Colors={Colors} />
+            
+            <FlatList
+              data={sensors}
+              renderItem={({ item }) => (
+                <SensorCard sensor={item} onPress={handleSensorPress} Colors={Colors} />
+              )}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.sensorsGrid}
+              scrollEnabled={false}
+            />
+            
+            {sensors.length === 0 && (
+              <View style={[styles.emptyState, { backgroundColor: Colors.card, borderColor: Colors.cardBorder }]}>
+                <Activity size={48} color={alpha(Colors.primary, 0.4)} strokeWidth={1} />
+                <Text style={[styles.emptyStateText, { color: Colors.textSecondary }]}>No sensors detected yet</Text>
+                <TouchableOpacity style={[styles.refreshButton, { backgroundColor: Colors.primary }]} onPress={handleRefresh}>
+                  <Text style={[styles.refreshButtonText, { color: "#FFFFFF" }]}>SCAN FOR SENSORS</Text>
+                </TouchableOpacity>
+              </View>
             )}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.sensorsGrid}
-            scrollEnabled={false} // The list is inside a ScrollView
-            // The empty component is handled below
-          />
-          {sensors.length === 0 && (
-            <View style={styles.emptyState}>
-              <Activity size={48} color={Colors.textSecondary} />
-              <Text style={[styles.emptyStateText, { color: Colors.textSecondary }]}>No sensors configured</Text>
-              <TouchableOpacity style={[styles.refreshButton, { backgroundColor: Colors.primary }]} onPress={handleRefresh}>
-                <Text style={[styles.refreshButtonText, { color: Colors.background }]}>Refresh Telemetry</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          </View>
         </View>
       </ScrollView>
 
@@ -834,52 +893,136 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginRight: 8,
+    flexDirection: 'row',
+    gap: 10,
   },
-  headerButton: {
-    padding: 8,
+  actionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  codeButton: {
-    // Make code button slightly more visible
-    backgroundColor: 'transparent',
+  
+  // Hero Section
+  heroSection: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  statusCard: {
-    borderRadius: 16,
-    padding: 20,
-    margin: 20,
-    marginBottom: 10,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+  heroDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  statusHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  circle1: {
+    width: 250,
+    height: 250,
+    top: -80,
+    right: -60,
+  },
+  circle2: {
+    width: 150,
+    height: 150,
+    bottom: -40,
+    left: -30,
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
+    zIndex: 1,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleContainer: {
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  refreshButtonHeader: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 16,
+    zIndex: 1,
   },
-  deviceIcon: {
+  heroIconWrapper: {
     width: 64,
     height: 64,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusInfo: {
+  heroTextContent: {
     flex: 1,
-    gap: 8,
+  },
+  heroTitleName: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.8,
+  },
+  heroMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  heroType: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.8)',
+    textTransform: 'capitalize',
   },
   statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
     gap: 6,
   },
   statusDot: {
@@ -888,302 +1031,394 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    fontSize: moderateScale(12),
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.cardBorder,
-  },
-  infoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 16,
-  },
-  infoItem: {
-    width: "48%",
-    gap: 6,
-  },
-  infoLabel: {
-    fontSize: moderateScale(12),
-  },
-  infoValue: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  section: {
+
+
+  // Body Content
+  contentBody: {
     paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 40,
+  },
+  
+  // Registry Section
+  registrySection: {
     marginBottom: 24,
   },
+  registryCard: {
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  registryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 20,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  registryTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  registrySubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  registryDetails: {
+    gap: 16,
+  },
+  registryItem: {
+    gap: 8,
+  },
+  registryLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    paddingHorizontal: 4,
+  },
+  registryValueBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 12,
+  },
+  registryValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    flex: 1,
+  },
+
+  // Info Section
+  infoSection: {
+    marginBottom: 32,
+  },
+  infoGrid: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  infoCard: {
+    flex: 1,
+    padding: 18,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+
+  // Sensors Section
   sectionHeader: {
-    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+    paddingHorizontal: 4,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   sectionTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
-  tokenCard: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+  sensorCount: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  sensorsGrid: {
     justifyContent: 'space-between',
-    gap: 12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    marginBottom: 14,
   },
+  
+  // Sensor Card
   sensorCard: {
-    borderRadius: 12,
+    width: (width - 40 - 14) / 2,
     padding: 16,
-    borderWidth: 1,
-    width: "48.5%", // Adjusted for better spacing in a 2-column layout
-    gap: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    justifyContent: 'space-between',
-    minHeight: 110,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    minHeight: 140,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  notifGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
   },
   sensorHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    gap: 12,
+    marginBottom: 16,
   },
   sensorIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sensorHeaderInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 4,
   },
   sensorLabel: {
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-    flex: 1,
-    textTransform: 'capitalize',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
-  sensorValue: {
-    fontSize: moderateScale(24),
-    fontWeight: "700",
-  },
-  sensorUnit: {
-    fontSize: moderateScale(14),
-    marginLeft: 2,
-    fontWeight: '500',
-  },
-  sensorBody: {
-    marginVertical: 4,
-  },
-  sensorFooter: {
+  timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 'auto',
+    gap: 4,
   },
   sensorTimestamp: {
-    fontSize: moderateScale(11),
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
-    gap: 12,
-  },
-  emptyStateText: {
-    fontSize: moderateScale(14),
-  },
-  refreshButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  refreshButtonText: {
-    color: COLORS.background,
+    fontSize: 10,
     fontWeight: '600',
   },
-  errorContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
+  sensorBody: {
+    marginTop: 'auto',
+  },
+  sensorValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  sensorUnit: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Empty State
+  emptyState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
     gap: 16,
   },
-  errorTitle: {
-    fontSize: moderateScale(20),
-    fontWeight: "600",
+  emptyStateText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
-  backButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+  refreshButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 12,
-    marginTop: 8,
   },
-  backButtonText: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: COLORS.background,
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
-  modalView: { width: "90%", maxWidth: 400, borderRadius: 16, padding: 20, elevation: 6 },
-  modalTitle: { fontSize: moderateScale(20), fontWeight: "bold", marginBottom: 4, textAlign: 'center' },
-  modalSub: { marginBottom: 16, textAlign: "center", fontSize: moderateScale(14) },
-  widgetOptions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginVertical: 10,
+
+  // Navigation Buttons
+  backIconButton: {
+    marginLeft: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
     gap: 12,
+    marginRight: 20,
+  },
+  headerActionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "flex-end",
+  },
+  modalView: {
+    width: "100%",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  modalSub: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  widgetOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 24,
   },
   widgetOption: {
-    width: "48%",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 8,
-    height: 140,
+    width: (width - 48 - 12) / 2,
+    height: 120,
+    borderRadius: 18,
+    borderWidth: 1.5,
     overflow: 'hidden',
   },
   widgetPreview: {
     flex: 1,
-    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   widgetLabelContainer: {
-    width: '100%',
     paddingVertical: 6,
-    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 4,
   },
   widgetText: {
-    fontWeight: "700",
-    fontSize: moderateScale(11),
-    letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   dashboardItem: {
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 10,
   },
   dashboardName: {
-    fontWeight: "bold",
-    fontSize: moderateScale(16),
+    fontSize: 16,
+    fontWeight: '700',
   },
   dashboardDesc: {
-    fontSize: moderateScale(14)
+    fontSize: 12,
+    marginTop: 2,
   },
   cancelText: {
-    textAlign: "center",
-    marginTop: 12,
-    fontSize: moderateScale(16),
-    padding: 10,
-    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 8,
   },
-  tokenText: {
-    flex: 1, // Allow text to take available space
-    fontSize: moderateScale(14),
-    fontFamily: Platform.select({ ios: "Courier", android: "monospace" }),
-  },
-  sensorsGrid: {
-    // Now used as columnWrapperStyle for FlatList
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  // Code Modal Styles
+
+  // Code Modal
   codeModalView: {
-    width: "90%",
-    maxWidth: 600,
-    maxHeight: "85%",
-    height: "70%",
-    borderRadius: 24,
+    width: "100%",
+    height: "90%",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
+    paddingBottom: 40,
   },
   codeModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 24,
   },
   codeModalTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '800',
   },
-  codeModalSubtitle: {
-    fontSize: 14,
-  },
-  closeIconButton: {
-    padding: 8,
-    borderRadius: 20,
+  codeModalClose: {
+    fontSize: 20,
+    fontWeight: '500',
   },
   codeTypeSelector: {
     flexDirection: 'row',
-    padding: 4,
-    borderRadius: 12,
-    marginBottom: 20,
+    gap: 10,
+    marginBottom: 24,
   },
   codeTypeButton: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
   },
   codeTypeText: {
     fontSize: 14,
-    fontWeight: "600",
-  },
-  codeContainer: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    fontWeight: '700',
   },
   codeScrollView: {
     flex: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  codeContainer: {
+    flex: 1,
+    borderWidth: 1.5,
   },
   codeBlockHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    padding: 14,
+    borderBottomWidth: 1.5,
+    backgroundColor: 'rgba(0,0,0,0.02)',
   },
   codeBlockTitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
   },
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    gap: 6,
   },
   copyButtonText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: '700',
   },
   codeText: {
-    fontSize: 12,
-    lineHeight: 20,
+    fontSize: 13,
   },
 });

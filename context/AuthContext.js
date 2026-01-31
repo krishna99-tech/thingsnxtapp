@@ -480,6 +480,22 @@ export const AuthProvider = ({ children }) => {
     };
   };
 
+  const refreshUser = async () => {
+    try {
+      const updatedUser = await API.getProfile();
+      if (updatedUser) {
+        // Log the received status for debugging (hidden from user but helps with re-renders)
+        setUser(prev => ({ ...prev, ...updatedUser }));
+        await AsyncStorage.setItem("user", JSON.stringify({ ...(user || {}), ...updatedUser }));
+        if (updatedUser.username) setUsername(updatedUser.username);
+        if (updatedUser.email) setEmail(updatedUser.email);
+        return updatedUser;
+      }
+    } catch (err) {
+      console.error("Refresh user error:", err);
+    }
+  };
+
   const updateUser = async (userData) => {
     try {
       // Assuming you have an API.updateUser method
@@ -889,6 +905,7 @@ const connectWebSocket = (token) => {
           deleteAccount,
           fetchDevices,
           updateUser,
+          refreshUser,
           handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
           fetchTelemetry,
           connectWebSocket, // Keep for potential manual reconnects

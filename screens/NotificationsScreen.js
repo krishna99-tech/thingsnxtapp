@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   ScrollView,
+  StatusBar,
+  Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
@@ -25,12 +27,19 @@ import {
   Wifi,
   WifiOff,
   ArrowUpCircle,
+  Inbox,
+  CheckCheck,
 } from "lucide-react-native";
 import { AuthContext } from "../context/AuthContext";
 import { formatDate } from "../utils/format";
 import api from "../services/api";
 import CustomAlert from "../components/CustomAlert";
-// Use formatDate(notification.created_at) or similar for displaying dates in notification list.
+
+// Utility function for color opacity
+const alpha = (hex, opacity) => {
+  const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
+  return hex + o;
+};
 
 const formatTimestamp = (date) => {
   if (!date) return "";
@@ -45,7 +54,8 @@ const formatTimestamp = (date) => {
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays === 1) return "Yesterday";
-  return `${diffDays}d ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return notificationDate.toLocaleDateString();
 };
 
 export default function NotificationsScreen() {
@@ -59,34 +69,40 @@ export default function NotificationsScreen() {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  const Colors = {
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
+  const Colors = useMemo(() => ({
+    background: isDarkTheme ? "#0A0E27" : "#F8FAFC",
     surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
+    surfaceLight: isDarkTheme ? "#252B4A" : "#F1F5F9",
+    surfaceElevated: isDarkTheme ? "#242B4D" : "#FAFBFC",
+    border: isDarkTheme ? "#2D3454" : "#E2E8F0",
+    borderLight: isDarkTheme ? "#1F2541" : "#F1F5F9",
     primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
+    primaryLight: isDarkTheme ? "#1AE4FF" : "#60A5FA",
+    secondary: isDarkTheme ? "#A855F7" : "#8B5CF6",
+    success: isDarkTheme ? "#10B981" : "#16A34A",
+    danger: isDarkTheme ? "#EF4444" : "#DC2626",
+    warning: isDarkTheme ? "#F59E0B" : "#F59E0B",
+    info: isDarkTheme ? "#3B82F6" : "#0EA5E9",
     white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-    statusOnline: "#00FF88",
-    statusWarning: "#FFB800",
-  };
+    text: isDarkTheme ? "#F8FAFC" : "#0F172A",
+    textSecondary: isDarkTheme ? "#94A3B8" : "#64748B",
+    textMuted: isDarkTheme ? "#64748B" : "#94A3B8",
+    gradientStart: isDarkTheme ? "#6366F1" : "#3B82F6",
+    gradientEnd: isDarkTheme ? "#8B5CF6" : "#6366F1",
+  }), [isDarkTheme]);
 
-  const getNotificationIcon = (type, category, size = 20) => {
-    if (type === "alert") return <AlertTriangle size={size} color={Colors.danger} />;
-    if (type === "warning") return <Bell size={size} color={Colors.statusWarning} />;
-    if (type === "success") return <CheckCircle size={size} color={Colors.success} />;
-    if (category === "security") return <Shield size={size} color={Colors.primary} />;
-    if (category === "energy") return <Zap size={size} color={Colors.secondary} />;
-    if (category === "device") return <Activity size={size} color={Colors.primary} />;
-    if (type === "online") return <Wifi size={size} color={Colors.success} />;
-    if (type === "offline") return <WifiOff size={size} color={Colors.danger} />;
-    if (type === "update") return <ArrowUpCircle size={size} color={Colors.primary} />;
-    return <Info size={size} color={Colors.primary} />;
+  const getNotificationIcon = (type, category, size = 22) => {
+    const strokeWidth = 2.5;
+    if (type === "alert") return <AlertTriangle size={size} color={Colors.danger} strokeWidth={strokeWidth} />;
+    if (type === "warning") return <Bell size={size} color={Colors.warning} strokeWidth={strokeWidth} />;
+    if (type === "success") return <CheckCircle size={size} color={Colors.success} strokeWidth={strokeWidth} />;
+    if (category === "security") return <Shield size={size} color={Colors.danger} strokeWidth={strokeWidth} />;
+    if (category === "energy") return <Zap size={size} color={Colors.secondary} strokeWidth={strokeWidth} />;
+    if (category === "device") return <Activity size={size} color={Colors.primary} strokeWidth={strokeWidth} />;
+    if (type === "online") return <Wifi size={size} color={Colors.success} strokeWidth={strokeWidth} />;
+    if (type === "offline") return <WifiOff size={size} color={Colors.danger} strokeWidth={strokeWidth} />;
+    if (type === "update") return <ArrowUpCircle size={size} color={Colors.primary} strokeWidth={strokeWidth} />;
+    return <Info size={size} color={Colors.info} strokeWidth={strokeWidth} />;
   };
 
   const getCategoryColor = (category) => {
@@ -94,8 +110,8 @@ export default function NotificationsScreen() {
       case "security": return Colors.danger;
       case "energy": return Colors.secondary;
       case "device": return Colors.primary;
-      case "system": return Colors.statusOnline;
-      default: return Colors.primary;
+      case "system": return Colors.success;
+      default: return Colors.info;
     }
   };
 
@@ -104,7 +120,6 @@ export default function NotificationsScreen() {
     if (!userToken) return;
     
     try {
-      // Use the api service which handles tokens automatically
       const response = await api.getNotifications({ limit: 50 });
       
       const data = response?.notifications || [];
@@ -121,14 +136,12 @@ export default function NotificationsScreen() {
       
       setNotifications(formatted);
     } catch (err) {
-      // Handle 404 gracefully (endpoint might be missing)
       if (err.message && (err.message.includes("404") || err.status === 404)) {
         console.warn("Notifications endpoint not found (404). Using empty list.");
         setNotifications([]);
       } else {
         console.error("Failed to load notifications:", err.message);
       }
-      // API service will handle 401 and logout if refresh fails
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -208,7 +221,6 @@ export default function NotificationsScreen() {
 
     connectWebSocket();
 
-    // Cleanup function to abort the connection when the component unmounts
     return () => {
       isMounted = false;
       if (sseController) {
@@ -216,13 +228,6 @@ export default function NotificationsScreen() {
       }
     };
   }, [userToken]);
-
-  // Update header when unread count changes
-  useEffect(() => {
-    navigation.setOptions({
-      headerRight: () => unreadCount > 0 ? <HeaderRight /> : null,
-    });
-  }, [navigation, unreadCount]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -253,16 +258,17 @@ export default function NotificationsScreen() {
     if (notification?.read) return;
 
     try {
-      // Use the api service (fire and forget)
-      api.markNotificationRead(notificationId).catch(err => console.error("Mark as read failed:", err.message));
+      api.markNotificationRead(notificationId).catch(err => 
+        console.error("Mark as read failed:", err.message)
+      );
       
       setNotifications((prev) =>
         prev.map((notif) =>
           notif.id === notificationId ? { ...notif, read: true } : notif
         )
       );
-    } catch (err) { // This catch is for synchronous errors, though the API call is now async
-      console.error("Error marking notification as read:", err.message); // API service will handle 401
+    } catch (err) {
+      console.error("Error marking notification as read:", err.message);
     } 
   };
 
@@ -272,7 +278,7 @@ export default function NotificationsScreen() {
       await api.markAllNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
-      console.error("Error marking all as read:", err.message); // API service will handle 401
+      console.error("Error marking all as read:", err.message);
       setAlertConfig({
         type: 'error',
         title: "Error",
@@ -299,7 +305,7 @@ export default function NotificationsScreen() {
         prev.filter((notif) => notif.id !== notificationId)
       );
     } catch (err) {
-      console.error("Error deleting notification:", err.message); // API service will handle 401
+      console.error("Error deleting notification:", err.message);
       setAlertConfig({
         type: 'error',
         title: "Error",
@@ -311,272 +317,472 @@ export default function NotificationsScreen() {
   };
 
   const filters = [
-    { key: "all", label: "All" },
-    { key: "unread", label: "Unread" },
+    { key: "all", label: "All", icon: Inbox },
+    { key: "unread", label: "Unread", icon: Bell },
     { key: "security", label: "Security", icon: Shield },
     { key: "energy", label: "Energy", icon: Zap },
     { key: "device", label: "Device", icon: Activity },
     { key: "system", label: "System", icon: SettingsIcon },
   ];
 
-  const HeaderRight = () => (
-    <TouchableOpacity onPress={markAllAsRead} style={styles.headerButton}>
-      <Check size={20} color={Colors.primary} />
-      <Text style={[styles.headerButtonText, { color: Colors.primary }]}>Mark all read</Text>
-    </TouchableOpacity>
-  );
+  const NotificationCard = ({ item }) => {
+    const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
-  const renderItem = ({ item }) => {
+    React.useEffect(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, []);
+
     return (
-      <TouchableOpacity
-        key={item.id}
-        style={[
-          styles.notificationCard,
-          { backgroundColor: Colors.surface, borderColor: Colors.border },
-          !item.read && { borderColor: Colors.primary + "40" },
-        ]}
-        onPress={() => handleNotificationPress(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.notificationContent}>
-          <View style={[styles.notificationIcon, { backgroundColor: getCategoryColor(item.category) + "20" }]}>
-            {getNotificationIcon(item.type, item.category, 22)}
-          </View>
+      <Animated.View style={{ opacity: fadeAnim }}>
+        <TouchableOpacity
+          style={[
+            styles.notificationCard,
+            { 
+              backgroundColor: Colors.surface, 
+              borderColor: !item.read ? alpha(Colors.primary, 0.3) : Colors.border,
+            },
+          ]}
+          onPress={() => handleNotificationPress(item)}
+          activeOpacity={0.7}
+        >
+          {!item.read && (
+            <LinearGradient
+              colors={[alpha(Colors.primary, 0.05), 'transparent']}
+              style={styles.notificationGlow}
+            />
+          )}
 
-          <View style={styles.notificationText}>
-            <View style={styles.notificationHeader}>
-              <Text style={[styles.notificationTitle, { color: Colors.text }, !item.read && styles.notificationTitleUnread]} numberOfLines={1}>
-                {item.title}
-              </Text>
-              {!item.read && <View style={[styles.unreadDot, { backgroundColor: Colors.primary }]} />}
+          <View style={styles.notificationContent}>
+            <View style={[
+              styles.notificationIcon, 
+              { backgroundColor: alpha(getCategoryColor(item.category), 0.12) }
+            ]}>
+              {getNotificationIcon(item.type, item.category, 24)}
             </View>
-            <Text style={[styles.notificationMessage, { color: Colors.textSecondary }]} numberOfLines={2}>
-              {item.message}
-            </Text>
-            <View style={styles.notificationMeta}>
-              <Text style={[styles.notificationTime, { color: Colors.textMuted }]}>
-                {formatTimestamp(item.timestamp)}
-              </Text>
-              <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) + "20" }]}>
-                <Text style={[styles.categoryBadgeText, { color: getCategoryColor(item.category) }]}>
-                  {item.category}
+
+            <View style={styles.notificationText}>
+              <View style={styles.notificationHeader}>
+                <Text 
+                  style={[
+                    styles.notificationTitle, 
+                    { color: Colors.text },
+                    !item.read && styles.notificationTitleUnread
+                  ]} 
+                  numberOfLines={1}
+                >
+                  {item.title}
                 </Text>
+                {!item.read && (
+                  <View style={[styles.unreadDot, { backgroundColor: Colors.primary }]} />
+                )}
+              </View>
+              
+              <Text 
+                style={[styles.notificationMessage, { color: Colors.textSecondary }]} 
+                numberOfLines={2}
+              >
+                {item.message}
+              </Text>
+              
+              <View style={styles.notificationMeta}>
+                <Text style={[styles.notificationTime, { color: Colors.textMuted }]}>
+                  {formatTimestamp(item.timestamp)}
+                </Text>
+                <View style={[
+                  styles.categoryBadge, 
+                  { backgroundColor: alpha(getCategoryColor(item.category), 0.12) }
+                ]}>
+                  <Text 
+                    style={[
+                      styles.categoryBadgeText, 
+                      { color: getCategoryColor(item.category) }
+                    ]}
+                  >
+                    {item.category}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => deleteNotification(item.id)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <X size={18} color={Colors.textMuted} />
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              deleteNotification(item.id);
+            }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <View style={[styles.deleteIcon, { backgroundColor: alpha(Colors.danger, 0.1) }]}>
+              <X size={16} color={Colors.danger} strokeWidth={2.5} />
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </Animated.View>
     );
   };
 
   return (
-    <LinearGradient
-      colors={isDarkTheme ? ["#0A0E27", "#1A1F3A"] : ["#FFFFFF", "#F1F5F9"]}
-      style={styles.gradient}
-    >
-      <View style={[styles.container, { backgroundColor: "transparent" }]}>
-        <View style={[styles.headerContainer, { backgroundColor: Colors.surface }]}>
-          <Text style={[styles.header, { color: Colors.text }]}>Notifications</Text>
-          {unreadCount > 0 && <HeaderRight />}
+    <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <StatusBar 
+        barStyle={isDarkTheme ? "light-content" : "dark-content"} 
+        backgroundColor="transparent"
+        translucent
+      />
+
+      {/* Header */}
+      <LinearGradient
+        colors={[Colors.gradientStart, Colors.gradientEnd]}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        {/* Decorative Elements */}
+        <View style={styles.headerDecoration}>
+          <View style={[styles.decorCircle, styles.decorCircle1]} />
+          <View style={[styles.decorCircle, styles.decorCircle2]} />
         </View>
 
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>Notifications</Text>
+            <Text style={styles.headerSubtitle}>
+              {unreadCount > 0 ? `${unreadCount} unread message${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
+            </Text>
+          </View>
+          
+          {unreadCount > 0 && (
+            <TouchableOpacity 
+              onPress={markAllAsRead} 
+              style={styles.markAllButton}
+              activeOpacity={0.7}
+            >
+              <CheckCheck size={20} color="#FFF" strokeWidth={2.5} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </LinearGradient>
+
+      {/* Filters */}
+      <View style={[styles.filtersContainer, { backgroundColor: Colors.surface, borderBottomColor: Colors.borderLight }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
-          style={[styles.filtersScroll, { backgroundColor: Colors.surface, borderBottomColor: Colors.border }]}
+          contentContainerStyle={styles.filtersScroll}
         >
           {filters.map((filterItem) => {
             const isActive = filter === filterItem.key;
             const Icon = filterItem.icon;
+            const filterCount = filterItem.key === "unread" 
+              ? unreadCount 
+              : filterItem.key === "all" 
+                ? notifications.length 
+                : notifications.filter(n => n.category === filterItem.key).length;
+
             return (
               <TouchableOpacity
                 key={filterItem.key}
-                style={[styles.filterChip, { backgroundColor: Colors.surfaceLight, borderColor: Colors.border }, isActive && [styles.filterChipActive, { backgroundColor: Colors.primary, borderColor: Colors.primary }]]}
+                style={[
+                  styles.filterChip,
+                  { 
+                    backgroundColor: Colors.surfaceLight, 
+                    borderColor: Colors.border 
+                  },
+                  isActive && { 
+                    backgroundColor: Colors.primary, 
+                    borderColor: Colors.primary 
+                  }
+                ]}
                 onPress={() => setFilter(filterItem.key)}
                 activeOpacity={0.7}
               >
-                {Icon && <Icon size={16} color={isActive ? Colors.white : Colors.textMuted} />}
-                <Text style={[styles.filterChipText, { color: Colors.textMuted }, isActive && [styles.filterChipTextActive, { color: Colors.white }]]}>
+                {Icon && (
+                  <Icon 
+                    size={16} 
+                    color={isActive ? Colors.white : Colors.textMuted} 
+                    strokeWidth={2.5}
+                  />
+                )}
+                <Text 
+                  style={[
+                    styles.filterChipText, 
+                    { color: Colors.textMuted },
+                    isActive && { color: Colors.white, fontWeight: '700' }
+                  ]}
+                >
                   {filterItem.label}
                 </Text>
-                {filterItem.key === "unread" && unreadCount > 0 && (
-                  <View style={[styles.badge, { backgroundColor: Colors.danger }]}>
-                    <Text style={styles.badgeText}>{unreadCount}</Text>
+                {filterCount > 0 && (
+                  <View style={[
+                    styles.filterBadge, 
+                    { 
+                      backgroundColor: isActive 
+                        ? 'rgba(255,255,255,0.25)' 
+                        : alpha(Colors.primary, 0.15) 
+                    }
+                  ]}>
+                    <Text style={[
+                      styles.filterBadgeText,
+                      { color: isActive ? Colors.white : Colors.primary }
+                    ]}>
+                      {filterCount}
+                    </Text>
                   </View>
                 )}
               </TouchableOpacity>
             );
           })}
         </ScrollView>
-
-          {loading ? (
-            <ActivityIndicator size="large" color={Colors.primary} style={{ flex: 1 }} />
-          ) : (
-            <FlatList
-              data={filteredNotifications}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              style={styles.scrollView}
-              contentContainerStyle={styles.scrollContent}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={Colors.primary}
-                  colors={[Colors.primary]}
-                />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Bell size={64} color={Colors.textMuted} />
-                  <Text style={[styles.emptyStateTitle, { color: Colors.text }]}>No notifications</Text>
-                  <Text style={[styles.emptyStateText, { color: Colors.textMuted }]}>
-                    {filter === "unread" ? "You're all caught up!" : "Check back later for updates"}
-                  </Text>
-                </View>
-              }
-            />
-          )}
-        <CustomAlert
-          visible={alertVisible}
-          isDarkTheme={isDarkTheme}
-          {...alertConfig}
-        />
       </View>
-    </LinearGradient>
+
+      {/* Notifications List */}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={[styles.loadingText, { color: Colors.textMuted }]}>
+            Loading notifications...
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredNotifications}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <NotificationCard item={item} />}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconContainer, { backgroundColor: alpha(Colors.primary, 0.12) }]}>
+                <Inbox size={48} color={Colors.primary} strokeWidth={2} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: Colors.text }]}>
+                {filter === "unread" ? "All caught up!" : "No notifications"}
+              </Text>
+              <Text style={[styles.emptyMessage, { color: Colors.textMuted }]}>
+                {filter === "unread" 
+                  ? "You've read all your notifications" 
+                  : "Check back later for updates"}
+              </Text>
+            </View>
+          }
+        />
+      )}
+
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  headerContainer: {
+
+  // Header Styles
+  headerGradient: {
     paddingTop: 60,
-    paddingBottom: 12,
+    paddingBottom: 24,
     paddingHorizontal: 20,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
+  },
+  headerDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  decorCircle1: {
+    width: 240,
+    height: 240,
+    top: -100,
+    right: -60,
+  },
+  decorCircle2: {
+    width: 160,
+    height: 160,
+    bottom: -40,
+    left: -50,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    zIndex: 1,
   },
-  header: {
+  headerTitle: {
     fontSize: 32,
-    fontWeight: "700",
+    fontWeight: "800",
+    color: '#FFF',
+    letterSpacing: -0.5,
+    marginBottom: 4,
   },
-  headerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginRight: 8,
-  },
-  headerButtonText: {
+  headerSubtitle: {
     fontSize: 14,
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+    letterSpacing: 0.2,
   },
-  filtersScroll: {
-    flexGrow: 0,
+  markAllButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Filters
+  filtersContainer: {
     borderBottomWidth: 1,
   },
-  filtersContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
+  filtersScroll: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 10,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  filterChipActive: {},
   filterChipText: {
     fontSize: 14,
     fontWeight: '600',
+    letterSpacing: 0.2,
   },
-  filterChipTextActive: {
-  },
-  badge: {
+  filterBadge: {
     borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    minWidth: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    marginLeft: 4,
+    paddingHorizontal: 7,
   },
-  badgeText: {
+  filterBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
-  scrollView: {
+
+  // List
+  listContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+
+  // Loading
+  loadingContainer: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
+
+  // Empty State
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 80,
+    paddingHorizontal: 20,
   },
-  emptyStateTitle: {
-    fontSize: 20,
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 22,
     fontWeight: '700',
-    marginTop: 16,
     marginBottom: 8,
+    letterSpacing: -0.3,
   },
-  emptyStateText: {
-    fontSize: 14,
+  emptyMessage: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
   },
+
+  // Notification Card
   notificationCard: {
     flexDirection: 'row',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  notificationGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   notificationContent: {
     flex: 1,
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
   },
   notificationIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   notificationText: {
     flex: 1,
+    gap: 6,
   },
   notificationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+    gap: 10,
   },
   notificationTitle: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
   notificationTitleUnread: {
     fontWeight: '700',
@@ -588,29 +794,39 @@ const styles = StyleSheet.create({
   },
   notificationMessage: {
     fontSize: 14,
-    marginBottom: 8,
     lineHeight: 20,
+    fontWeight: '500',
   },
   notificationMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    marginTop: 2,
   },
   notificationTime: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
   },
   categoryBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   categoryBadgeText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'capitalize',
+    letterSpacing: 0.3,
   },
   deleteButton: {
-    padding: 4,
     alignSelf: 'flex-start',
+    marginLeft: 8,
+  },
+  deleteIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

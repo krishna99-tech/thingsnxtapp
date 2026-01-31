@@ -9,6 +9,8 @@ import {
   Modal,
   ActivityIndicator,
   Pressable,
+  Dimensions,
+  StatusBar,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,32 +24,35 @@ import {
   ChevronRight,
   LogOut,
   Bell,
-  Database, // For Data Export
-  Trash2,   // For Clear Cache
-  Palette,  // For Appearance
+  Database,
+  Trash2,
+  Palette,
   Check,
   Globe,
   Lock,
-  Eye,
-  EyeOff,
   Download,
-  Upload,
   Cpu,
   LayoutDashboard,
   Settings,
-  Zap,
   FileText,
   Link,
   Sun,
   Moon,
   X,
   Webhook,
+  Mail,
+  BellRing,
+  Activity,
+  Zap,
 } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MenuItem from "../components/settings/MenuItem";
 import { showToast } from "../components/Toast";
 import api from "../services/api";
+import { getThemeColors, alpha } from "../utils/theme";
+
+const { width } = Dimensions.get('window');
 
 export default function SettingsScreen() {
   const {
@@ -57,13 +62,15 @@ export default function SettingsScreen() {
     user,
     devices,
     isDarkTheme,
-    showAlert,
     themePreference,
     setThemePreference,
     updateUser,
   } = useContext(AuthContext);
+  
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  // State Management
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   const [isExportModalVisible, setExportModalVisible] = useState(false);
@@ -83,22 +90,8 @@ export default function SettingsScreen() {
   const [dashboardCount, setDashboardCount] = useState(0);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // Theme Constants
-  const Colors = useMemo(() => ({
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    warning: isDarkTheme ? "#FFB800" : "#F59E0B",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-  }), [isDarkTheme]);
+  // Enhanced Theme Constants
+  const Colors = useMemo(() => getThemeColors(isDarkTheme), [isDarkTheme]);
 
   // Load dashboard count
   React.useEffect(() => {
@@ -127,6 +120,7 @@ export default function SettingsScreen() {
     setPushNotifications(user?.notification_settings?.push ?? true);
   }, [user]);
 
+  // Event Handlers
   const handleLogout = () => {
     setAlertConfig({
       type: 'confirm',
@@ -154,7 +148,10 @@ export default function SettingsScreen() {
         {
           text: "Clear",
           style: "destructive",
-          onPress: () => { setAlertVisible(false); showToast.success("Cache Cleared", "Temporary data has been removed."); }
+          onPress: () => { 
+            setAlertVisible(false); 
+            showToast.success("Cache Cleared", "Temporary data has been removed."); 
+          }
         },
       ],
     });
@@ -167,7 +164,6 @@ export default function SettingsScreen() {
 
   const handleExportConfirm = () => {
     setIsExporting(true);
-    // Simulate API call
     setTimeout(() => {
       setIsExporting(false);
       setExportModalVisible(false);
@@ -177,7 +173,6 @@ export default function SettingsScreen() {
       );
     }, 2000);
   };
-
 
   const handleProfilePress = () => {
     navigation.navigate("Profile");
@@ -190,7 +185,8 @@ export default function SettingsScreen() {
   const handleThemeSelect = (mode) => {
     setThemePreference(mode);
     setThemeModalVisible(false);
-    showToast.success("Theme Updated", `Switched to ${mode === 'system' ? 'System Default' : mode === 'dark' ? 'Dark Mode' : 'Light Mode'}`);
+    const modeLabel = mode === 'system' ? 'System Default' : mode === 'dark' ? 'Dark Mode' : 'Light Mode';
+    showToast.success("Theme Updated", `Switched to ${modeLabel}`);
   };
 
   const handleLanguageSelect = (lang) => {
@@ -223,61 +219,63 @@ export default function SettingsScreen() {
     showToast.success("Settings Saved", "Privacy preferences updated");
   };
 
-  // Quick Stats Cards Component
+  // Quick Stats Component
   const QuickStatCard = ({ icon, value, label, color, onPress }) => (
     <TouchableOpacity
-      style={[styles.quickStatCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
+      style={[styles.statCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.quickStatIcon, { backgroundColor: color + "20" }]}>
+      <View style={[styles.statIconContainer, { backgroundColor: alpha(color, 0.12) }]}>
         {icon}
       </View>
-      <Text style={[styles.quickStatValue, { color: Colors.text }]}>{value}</Text>
-      <Text style={[styles.quickStatLabel, { color: Colors.textSecondary }]}>{label}</Text>
+      <Text style={[styles.statValue, { color: Colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: Colors.textSecondary }]}>{label}</Text>
     </TouchableOpacity>
   );
 
-  // ⭐ Refactored Menu Structure
+  // Menu Structure
   const menuSections = useMemo(() => [
     {
       title: "Account",
+      icon: User,
       items: [
         {
-          icon: { component: <User size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          icon: { component: <User size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Profile",
           subtitle: user?.full_name || username || "Edit your personal information",
           onPress: handleProfilePress,
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <Shield size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          icon: { component: <Shield size={20} color={Colors.success} />, bgColor: alpha(Colors.success, 0.12) },
           title: "Security",
-          subtitle: "Change your password",
+          subtitle: "Manage password and security settings",
           onPress: () => navigation.navigate('ForgotPassword'),
           rightComponent: { type: 'chevron' },
         },
       ],
     },
     {
-      title: "General",
+      title: "Management",
+      icon: Settings,
       items: [
         {
-          icon: { component: <Smartphone size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" },
-          title: "Manage Devices",
+          icon: { component: <Smartphone size={20} color={Colors.secondary} />, bgColor: alpha(Colors.secondary, 0.12) },
+          title: "Devices",
           subtitle: `${devices?.length || 0} device${devices?.length !== 1 ? 's' : ''} connected`,
           onPress: () => navigation.navigate("Devices"),
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <LayoutDashboard size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
-          title: "Manage Dashboards",
+          icon: { component: <LayoutDashboard size={20} color={Colors.warning} />, bgColor: alpha(Colors.warning, 0.12) },
+          title: "Dashboards",
           subtitle: `${dashboardCount} dashboard${dashboardCount !== 1 ? 's' : ''} available`,
           onPress: handleDashboardsPress,
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" },
+          icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: alpha(Colors.danger, 0.12) },
           title: "Notifications",
           subtitle: "View alerts and system messages",
           onPress: () => navigation.navigate("Notifications"),
@@ -287,23 +285,24 @@ export default function SettingsScreen() {
     },
     {
       title: "Preferences",
+      icon: Palette,
       items: [
         {
-          icon: { component: <Palette size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
+          icon: { component: <Palette size={20} color={Colors.info} />, bgColor: alpha(Colors.info, 0.12) },
           title: "Appearance",
           subtitle: themePreference === 'system' ? "System Default" : (isDarkTheme ? "Dark Mode" : "Light Mode"),
           onPress: () => setThemeModalVisible(true),
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <Globe size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          icon: { component: <Globe size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Language",
           subtitle: selectedLanguage === 'en' ? "English" : selectedLanguage === 'es' ? "Spanish" : "French",
           onPress: () => setLanguageModalVisible(true),
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" },
+          icon: { component: <BellRing size={20} color={Colors.warning} />, bgColor: alpha(Colors.warning, 0.12) },
           title: "Notification Settings",
           subtitle: notificationsEnabled ? "Enabled" : "Disabled",
           onPress: () => setNotificationsModalVisible(true),
@@ -313,9 +312,10 @@ export default function SettingsScreen() {
     },
     {
       title: "Privacy & Security",
+      icon: Lock,
       items: [
         {
-          icon: { component: <Lock size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          icon: { component: <Lock size={20} color={Colors.success} />, bgColor: alpha(Colors.success, 0.12) },
           title: "Privacy Settings",
           subtitle: "Control data sharing and analytics",
           onPress: () => setPrivacyModalVisible(true),
@@ -325,18 +325,19 @@ export default function SettingsScreen() {
     },
     {
       title: "Integrations",
+      icon: Zap,
       items: [
         {
-          icon: { component: <Link size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" },
+          icon: { component: <Link size={20} color={Colors.secondary} />, bgColor: alpha(Colors.secondary, 0.12) },
           title: "Connected Apps",
           subtitle: "Manage third-party services",
           onPress: () => navigation.navigate("ConnectedApps"),
           rightComponent: { type: 'chevron' },
         },
         {
-          icon: { component: <Webhook size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          icon: { component: <Webhook size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Webhooks",
-          subtitle: "Manage real-time event callbacks",
+          subtitle: "Real-time event callbacks",
           onPress: () => navigation.navigate("Webhooks"),
           rightComponent: { type: 'chevron' },
         },
@@ -344,34 +345,37 @@ export default function SettingsScreen() {
     },
     {
       title: "Data Management",
+      icon: Database,
       items: [
         { 
-          icon: { component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, 
-          title: "Data Export", 
+          icon: { component: <Download size={20} color={Colors.info} />, bgColor: alpha(Colors.info, 0.12) }, 
+          title: "Export Data", 
           subtitle: "Download sensor data logs", 
           onPress: handleDataExport, 
           rightComponent: { type: 'chevron' } 
         },
         { 
-          icon: { component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }, 
+          icon: { component: <Trash2 size={20} color={Colors.danger} />, bgColor: alpha(Colors.danger, 0.12) }, 
           title: "Clear Cache", 
-          subtitle: "Clear temporary app data", 
-          onPress: handleClearCache 
+          subtitle: "Remove temporary app data", 
+          onPress: handleClearCache,
+          rightComponent: { type: 'chevron' }
         },
       ],
     },
     {
-      title: "Support",
+      title: "Support & Information",
+      icon: HelpCircle,
       items: [
         {
-          icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Help Center",
           subtitle: "FAQs and support articles",
           onPress: () => openWebView("https://thingsnxt.vercel.app/support", "Help Center"),
           rightComponent: { type: 'chevron' }
         },
         {
-          icon: { component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          icon: { component: <Info size={20} color={Colors.success} />, bgColor: alpha(Colors.success, 0.12) },
           title: "About",
           subtitle: "App version and information",
           onPress: () => openWebView("https://thingsnxt.vercel.app/", "About ThingsNXT"),
@@ -379,31 +383,44 @@ export default function SettingsScreen() {
         },
       ],
     },
-  ], [Colors, user, username, devices, dashboardCount, themePreference, selectedLanguage, notificationsEnabled]);
+  ], [Colors, user, username, devices, dashboardCount, themePreference, selectedLanguage, notificationsEnabled, isDarkTheme]);
 
-
-  // Reusable Section Component
-  const SettingsSection = ({ title, children }) => (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>{title}</Text>
-      {children}
-    </View>
-  );
+  const onlineDevices = devices?.filter(d => d.status === "online").length || 0;
+  const totalDevices = devices?.length || 0;
 
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      <StatusBar 
+        barStyle={isDarkTheme ? "light-content" : "dark-content"} 
+        backgroundColor="transparent"
+        translucent
+      />
+
+      {/* Enhanced Header */}
       <LinearGradient
-        colors={isDarkTheme ? [Colors.surface, Colors.background] : ["#FFFFFF", "#F1F5F9"]}
-        style={[styles.header, { paddingTop: insets.top + 20 }]}
+        colors={[Colors.gradientStart, Colors.gradientEnd]}
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
+        {/* Decorative Elements */}
+        <View style={styles.headerDecoration}>
+          <View style={[styles.decorCircle, styles.decorCircle1]} />
+          <View style={[styles.decorCircle, styles.decorCircle2]} />
+        </View>
+
         <View style={styles.headerContent}>
           <View style={styles.headerTop}>
-            <Text style={[styles.headerTitle, { color: Colors.text }]}>Settings</Text>
+            <View>
+              <Text style={styles.headerTitle}>Settings</Text>
+              <Text style={styles.headerSubtitle}>Manage your preferences</Text>
+            </View>
             <TouchableOpacity 
-              style={[styles.logoutButton, { backgroundColor: Colors.danger + "15" }]} 
+              style={styles.logoutButton} 
               onPress={handleLogout}
+              activeOpacity={0.7}
             >
-              <LogOut size={20} color={Colors.danger} />
+              <LogOut size={20} color="#FFF" />
             </TouchableOpacity>
           </View>
           
@@ -411,45 +428,64 @@ export default function SettingsScreen() {
           <TouchableOpacity 
             onPress={handleProfilePress} 
             activeOpacity={0.8}
-            style={[styles.profileCard, { backgroundColor: Colors.surface }]}
+            style={styles.profileCard}
           >
-            <View style={[styles.avatar, { backgroundColor: Colors.primary + '20' }]}>
-              <User size={28} color={Colors.primary} />
-            </View>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.15)', 'rgba(255,255,255,0.08)']}
+              style={styles.avatarGradient}
+            >
+              <View style={styles.avatar}>
+                <User size={28} color="#FFF" strokeWidth={2.5} />
+              </View>
+            </LinearGradient>
             <View style={styles.profileInfo}>
-              <Text style={[styles.profileName, { color: Colors.text }]}>
+              <Text style={styles.profileName}>
                 {user?.full_name || username || 'User'}
               </Text>
-              <Text style={[styles.profileEmail, { color: Colors.textSecondary }]} numberOfLines={1}>
+              <Text style={styles.profileEmail} numberOfLines={1}>
                 {email || 'user@example.com'}
               </Text>
             </View>
-            <ChevronRight size={20} color={Colors.textSecondary} />
+            <View style={styles.profileChevron}>
+              <ChevronRight size={20} color="rgba(255,255,255,0.6)" />
+            </View>
           </TouchableOpacity>
 
           {/* Quick Stats */}
-          <View style={styles.quickStatsContainer}>
-            <QuickStatCard
-              icon={<Cpu size={18} color={Colors.primary} />}
-              value={devices?.length || 0}
-              label="Devices"
-              color={Colors.primary}
-              onPress={() => navigation.navigate("Devices")}
-            />
-            <QuickStatCard
-              icon={<LayoutDashboard size={18} color={Colors.warning} />}
-              value={loadingStats ? "--" : dashboardCount}
-              label="Dashboards"
-              color={Colors.warning}
-              onPress={handleDashboardsPress}
-            />
-            <QuickStatCard
-              icon={<Bell size={18} color={Colors.danger} />}
-              value={devices?.filter(d => d.status === "online").length || 0}
-              label="Online"
-              color={Colors.success}
-              onPress={() => navigation.navigate("Notifications")}
-            />
+          <View style={styles.statsContainer}>
+            <View style={styles.statsGrid}>
+              <View style={styles.miniStatCard}>
+                <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                  <Cpu size={18} color="#FFF" strokeWidth={2} />
+                </View>
+                <View style={styles.miniStatContent}>
+                  <Text style={styles.miniStatValue}>{totalDevices}</Text>
+                  <Text style={styles.miniStatLabel}>Devices</Text>
+                </View>
+              </View>
+
+              <View style={styles.miniStatCard}>
+                <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                  <Activity size={18} color="#FFF" strokeWidth={2} />
+                </View>
+                <View style={styles.miniStatContent}>
+                  <Text style={styles.miniStatValue}>{onlineDevices}</Text>
+                  <Text style={styles.miniStatLabel}>Online</Text>
+                </View>
+              </View>
+
+              <View style={styles.miniStatCard}>
+                <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                  <LayoutDashboard size={18} color="#FFF" strokeWidth={2} />
+                </View>
+                <View style={styles.miniStatContent}>
+                  <Text style={styles.miniStatValue}>
+                    {loadingStats ? "--" : dashboardCount}
+                  </Text>
+                  <Text style={styles.miniStatLabel}>Dashboards</Text>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
       </LinearGradient>
@@ -459,19 +495,39 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Render menu sections dynamically */}
-        {menuSections.map((section) => (
-          <SettingsSection key={section.title} title={section.title}>
-            {section.items.map((item) => (
-              <MenuItem
-                key={item.title}
-                {...item}
-                Colors={Colors}
-              />
-            ))}
-          </SettingsSection>
+        {menuSections.map((section, index) => (
+          <View key={section.title} style={[styles.section, index === 0 && { marginTop: 24 }]}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIconWrapper, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
+                <section.icon size={14} color={Colors.primary} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>
+                {section.title}
+              </Text>
+            </View>
+            
+            <View style={[styles.card, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
+              {section.items.map((item, itemIndex) => (
+                <React.Fragment key={item.title}>
+                  <MenuItem {...item} Colors={Colors} />
+                  {itemIndex < section.items.length - 1 && (
+                    <View style={[styles.divider, { backgroundColor: Colors.borderLight }]} />
+                  )}
+                </React.Fragment>
+              ))}
+            </View>
+          </View>
         ))}
 
-        <Text style={[styles.version, { color: Colors.textMuted }]}>Version 1.0.0</Text>
+        {/* Version Footer */}
+        <View style={styles.footer}>
+          <Text style={[styles.version, { color: Colors.textMuted }]}>
+            ThingsNXT v1.0.0
+          </Text>
+          <Text style={[styles.footerText, { color: Colors.textMuted }]}>
+            © 2024 All rights reserved
+          </Text>
+        </View>
       </ScrollView>
 
       <CustomAlert
@@ -487,7 +543,7 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setExportModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity 
               style={styles.modalCloseButton} 
@@ -495,46 +551,74 @@ export default function SettingsScreen() {
             >
               <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
+            
+            <View style={[styles.modalIconContainer, { backgroundColor: alpha(Colors.info, 0.12) }]}>
+              <Download size={32} color={Colors.info} />
+            </View>
+            
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Export Sensor Data</Text>
             <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
-              Select a time range for the data you want to export.
+              Select a time range for the data you want to export
             </Text>
 
             <View style={styles.rangeContainer}>
               {[
-                { key: "7d", label: "Last 7 Days" },
-                { key: "30d", label: "Last 30 Days" },
-                { key: "all", label: "All Time" },
+                { key: "7d", label: "Last 7 Days", desc: "Recent activity" },
+                { key: "30d", label: "Last 30 Days", desc: "Monthly data" },
+                { key: "all", label: "All Time", desc: "Complete history" },
               ].map((range) => (
                 <Pressable
                   key={range.key}
                   style={[
                     styles.rangeOption,
                     { backgroundColor: Colors.surfaceLight, borderColor: Colors.border },
-                    selectedRange === range.key && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                    selectedRange === range.key && { 
+                      backgroundColor: alpha(Colors.primary, 0.12), 
+                      borderColor: Colors.primary 
+                    },
                   ]}
                   onPress={() => setSelectedRange(range.key)}
                 >
-                  <Text style={[styles.rangeText, { color: Colors.text }, selectedRange === range.key && { color: Colors.white }]}>
-                    {range.label}
-                  </Text>
+                  <View style={styles.rangeContent}>
+                    <Text style={[
+                      styles.rangeText, 
+                      { color: Colors.text }, 
+                      selectedRange === range.key && { color: Colors.primary, fontWeight: '700' }
+                    ]}>
+                      {range.label}
+                    </Text>
+                    <Text style={[styles.rangeDesc, { color: Colors.textSecondary }]}>
+                      {range.desc}
+                    </Text>
+                  </View>
+                  {selectedRange === range.key && (
+                    <Check size={20} color={Colors.primary} strokeWidth={2.5} />
+                  )}
                 </Pressable>
               ))}
             </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.primary }, isExporting && { opacity: 0.7 }]}
-                onPress={handleExportConfirm}
-                disabled={isExporting}
+            <TouchableOpacity
+              style={[styles.modalButton, isExporting && { opacity: 0.7 }]}
+              onPress={handleExportConfirm}
+              disabled={isExporting}
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primaryLight]}
+                style={styles.modalButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
               >
                 {isExporting ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: Colors.white }]}>Export</Text>
+                  <>
+                    <Download size={18} color="#FFF" />
+                    <Text style={styles.modalButtonText}>Export Data</Text>
+                  </>
                 )}
-              </TouchableOpacity>
-            </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -546,7 +630,7 @@ export default function SettingsScreen() {
         animationType="fade"
         onRequestClose={() => setThemeModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity 
               style={styles.modalCloseButton} 
@@ -554,13 +638,21 @@ export default function SettingsScreen() {
             >
               <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
+            
+            <View style={[styles.modalIconContainer, { backgroundColor: alpha(Colors.warning, 0.12) }]}>
+              <Palette size={32} color={Colors.warning} />
+            </View>
+            
             <Text style={[styles.modalTitle, { color: Colors.text }]}>Appearance</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
+              Choose your preferred theme
+            </Text>
             
             <View style={styles.themeGrid}>
               {[
-                { id: 'light', label: 'Light', icon: Sun },
-                { id: 'dark', label: 'Dark', icon: Moon },
-                { id: 'system', label: 'System', icon: Smartphone },
+                { id: 'light', label: 'Light', icon: Sun, desc: 'Bright theme' },
+                { id: 'dark', label: 'Dark', icon: Moon, desc: 'Dark theme' },
+                { id: 'system', label: 'Auto', icon: Smartphone, desc: 'Match system' },
               ].map((option) => {
                 const Icon = option.icon;
                 const isActive = themePreference === option.id;
@@ -573,19 +665,29 @@ export default function SettingsScreen() {
                         backgroundColor: Colors.surfaceLight,
                         borderColor: isActive ? Colors.primary : Colors.border 
                       },
-                      isActive && { backgroundColor: Colors.primary + '10' }
+                      isActive && { backgroundColor: alpha(Colors.primary, 0.12) }
                     ]}
                     onPress={() => handleThemeSelect(option.id)}
+                    activeOpacity={0.7}
                   >
-                    <View style={[styles.themeIconContainer, isActive && { backgroundColor: Colors.primary + '20' }]}>
-                      <Icon size={28} color={isActive ? Colors.primary : Colors.textSecondary} />
+                    <View style={[
+                      styles.themeIconContainer, 
+                      { backgroundColor: isActive ? alpha(Colors.primary, 0.15) : 'rgba(0,0,0,0.03)' }
+                    ]}>
+                      <Icon size={28} color={isActive ? Colors.primary : Colors.textSecondary} strokeWidth={2} />
                     </View>
-                    <Text style={[styles.themeLabel, { color: isActive ? Colors.primary : Colors.text }]}>
+                    <Text style={[
+                      styles.themeLabel, 
+                      { color: isActive ? Colors.primary : Colors.text }
+                    ]}>
                       {option.label}
+                    </Text>
+                    <Text style={[styles.themeDesc, { color: Colors.textSecondary }]}>
+                      {option.desc}
                     </Text>
                     {isActive && (
                       <View style={[styles.activeBadge, { backgroundColor: Colors.primary }]}>
-                        <Check size={10} color="#FFF" />
+                        <Check size={12} color="#FFF" strokeWidth={3} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -603,7 +705,7 @@ export default function SettingsScreen() {
         animationType="fade"
         onRequestClose={() => setLanguageModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity 
               style={styles.modalCloseButton} 
@@ -611,27 +713,46 @@ export default function SettingsScreen() {
             >
               <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: Colors.text }]}>Language</Text>
             
-            <View style={{ gap: 8, marginBottom: 20 }}>
+            <View style={[styles.modalIconContainer, { backgroundColor: alpha(Colors.primary, 0.12) }]}>
+              <Globe size={32} color={Colors.primary} />
+            </View>
+            
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Language</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
+              Select your preferred language
+            </Text>
+            
+            <View style={styles.languageList}>
               {[
-                { id: 'en', label: 'English' },
-                { id: 'es', label: 'Español' },
-                { id: 'fr', label: 'Français' },
+                { id: 'en', label: 'English', flag: '🇺🇸' },
+                { id: 'es', label: 'Español', flag: '🇪🇸' },
+                { id: 'fr', label: 'Français', flag: '🇫🇷' },
               ].map((option) => (
                 <TouchableOpacity
                   key={option.id}
                   style={[
-                    styles.rangeOption, 
-                    { flexDirection: 'row', justifyContent: 'space-between', borderColor: Colors.border, backgroundColor: Colors.surfaceLight },
-                    selectedLanguage === option.id && { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' }
+                    styles.languageOption, 
+                    { borderColor: Colors.border, backgroundColor: Colors.surfaceLight },
+                    selectedLanguage === option.id && { 
+                      borderColor: Colors.primary, 
+                      backgroundColor: alpha(Colors.primary, 0.08) 
+                    }
                   ]}
                   onPress={() => handleLanguageSelect(option.id)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={[styles.rangeText, { color: Colors.text }, selectedLanguage === option.id && { color: Colors.primary }]}>
+                  <Text style={styles.languageFlag}>{option.flag}</Text>
+                  <Text style={[
+                    styles.languageText, 
+                    { color: Colors.text }, 
+                    selectedLanguage === option.id && { color: Colors.primary, fontWeight: '700' }
+                  ]}>
                     {option.label}
                   </Text>
-                  {selectedLanguage === option.id && <Check size={20} color={Colors.primary} />}
+                  {selectedLanguage === option.id && (
+                    <Check size={20} color={Colors.primary} strokeWidth={2.5} />
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -646,7 +767,7 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setNotificationsModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity 
               style={styles.modalCloseButton} 
@@ -654,70 +775,107 @@ export default function SettingsScreen() {
             >
               <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: Colors.text }]}>Notification Settings</Text>
             
-            <View style={{ gap: 16, marginBottom: 20 }}>
-              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Enable Notifications</Text>
-                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
-                    Receive push notifications for important updates
-                  </Text>
+            <View style={[styles.modalIconContainer, { backgroundColor: alpha(Colors.warning, 0.12) }]}>
+              <BellRing size={32} color={Colors.warning} />
+            </View>
+            
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Notifications</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
+              Manage how you receive notifications
+            </Text>
+            
+            <View style={styles.settingsContainer}>
+              <View style={[styles.settingRow, { borderBottomColor: Colors.borderLight }]}>
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: alpha(Colors.success, 0.12) }]}>
+                    <Bell size={18} color={Colors.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingLabel, { color: Colors.text }]}>
+                      Enable Notifications
+                    </Text>
+                    <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                      Receive push notifications for updates
+                    </Text>
+                  </View>
                 </View>
                 <Switch
                   value={notificationsEnabled}
                   onValueChange={setNotificationsEnabled}
-                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  trackColor={{ false: Colors.surfaceLight, true: alpha(Colors.primary, 0.4) }}
                   thumbColor={notificationsEnabled ? Colors.primary : Colors.textSecondary}
+                  ios_backgroundColor={Colors.surfaceLight}
                 />
               </View>
 
-              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Email Notifications</Text>
-                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
-                    Receive notifications via email
-                  </Text>
+              <View style={[styles.settingRow, { borderBottomColor: Colors.borderLight }]}>
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: alpha(Colors.info, 0.12) }]}>
+                    <Mail size={18} color={Colors.info} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingLabel, { color: Colors.text }]}>
+                      Email Notifications
+                    </Text>
+                    <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                      Receive notifications via email
+                    </Text>
+                  </View>
                 </View>
                 <Switch
                   value={emailNotifications}
                   onValueChange={setEmailNotifications}
                   disabled={!notificationsEnabled}
-                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  trackColor={{ false: Colors.surfaceLight, true: alpha(Colors.primary, 0.4) }}
                   thumbColor={emailNotifications ? Colors.primary : Colors.textSecondary}
+                  ios_backgroundColor={Colors.surfaceLight}
                 />
               </View>
 
-              <View style={[styles.settingRow]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Push Notifications</Text>
-                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
-                    Receive push notifications on your device
-                  </Text>
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: alpha(Colors.warning, 0.12) }]}>
+                    <Smartphone size={18} color={Colors.warning} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingLabel, { color: Colors.text }]}>
+                      Push Notifications
+                    </Text>
+                    <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                      Receive push notifications on device
+                    </Text>
+                  </View>
                 </View>
                 <Switch
                   value={pushNotifications}
                   onValueChange={setPushNotifications}
                   disabled={!notificationsEnabled}
-                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  trackColor={{ false: Colors.surfaceLight, true: alpha(Colors.primary, 0.4) }}
                   thumbColor={pushNotifications ? Colors.primary : Colors.textSecondary}
+                  ios_backgroundColor={Colors.surfaceLight}
                 />
               </View>
             </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
-                onPress={handleNotificationsSave}
-                disabled={isSavingNotifications}
+            <TouchableOpacity
+              style={[styles.modalButton]}
+              onPress={handleNotificationsSave}
+              disabled={isSavingNotifications}
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primaryLight]}
+                style={styles.modalButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
               >
                 {isSavingNotifications ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
+                  <Text style={styles.modalButtonText}>Save Settings</Text>
                 )}
-              </TouchableOpacity>
-            </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -729,7 +887,7 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setPrivacyModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity 
               style={styles.modalCloseButton} 
@@ -737,48 +895,77 @@ export default function SettingsScreen() {
             >
               <X size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: Colors.text }]}>Privacy Settings</Text>
             
-            <View style={{ gap: 16, marginBottom: 20 }}>
-              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Analytics</Text>
-                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
-                    Help improve the app by sharing usage analytics
-                  </Text>
+            <View style={[styles.modalIconContainer, { backgroundColor: alpha(Colors.success, 0.12) }]}>
+              <Lock size={32} color={Colors.success} />
+            </View>
+            
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Privacy Settings</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
+              Control your data and privacy preferences
+            </Text>
+            
+            <View style={styles.settingsContainer}>
+              <View style={[styles.settingRow, { borderBottomColor: Colors.borderLight }]}>
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: alpha(Colors.info, 0.12) }]}>
+                    <Activity size={18} color={Colors.info} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingLabel, { color: Colors.text }]}>
+                      Analytics
+                    </Text>
+                    <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                      Help improve the app with usage data
+                    </Text>
+                  </View>
                 </View>
                 <Switch
                   value={analyticsEnabled}
                   onValueChange={setAnalyticsEnabled}
-                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  trackColor={{ false: Colors.surfaceLight, true: alpha(Colors.primary, 0.4) }}
                   thumbColor={analyticsEnabled ? Colors.primary : Colors.textSecondary}
+                  ios_backgroundColor={Colors.surfaceLight}
                 />
               </View>
 
-              <View style={[styles.settingRow]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Data Sharing</Text>
-                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
-                    Allow sharing anonymized data for research
-                  </Text>
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: alpha(Colors.secondary, 0.12) }]}>
+                    <Database size={18} color={Colors.secondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingLabel, { color: Colors.text }]}>
+                      Data Sharing
+                    </Text>
+                    <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                      Share anonymized data for research
+                    </Text>
+                  </View>
                 </View>
                 <Switch
                   value={dataSharing}
                   onValueChange={setDataSharing}
-                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  trackColor={{ false: Colors.surfaceLight, true: alpha(Colors.primary, 0.4) }}
                   thumbColor={dataSharing ? Colors.primary : Colors.textSecondary}
+                  ios_backgroundColor={Colors.surfaceLight}
                 />
               </View>
             </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
-                onPress={handlePrivacySave}
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={handlePrivacySave}
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primaryLight]}
+                style={styles.modalButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
               >
-                <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.modalButtonText}>Save Settings</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -790,43 +977,80 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  
+  // Header Styles
   header: {
-    paddingBottom: 20,
+    paddingBottom: 24,
     paddingHorizontal: 20,
+    overflow: 'hidden',
+  },
+  headerDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  decorCircle1: {
+    width: 280,
+    height: 280,
+    top: -140,
+    right: -80,
+  },
+  decorCircle2: {
+    width: 180,
+    height: 180,
+    bottom: -60,
+    left: -40,
   },
   headerContent: {
     gap: 16,
+    zIndex: 1,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: "800",
+    color: '#FFF',
     letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: 'rgba(255,255,255,0.75)',
+    letterSpacing: 0.2,
   },
   logoutButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
+  
+  // Profile Card
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     gap: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+  },
+  avatarGradient: {
+    borderRadius: 28,
+    padding: 2,
   },
   avatar: {
     width: 56,
@@ -834,6 +1058,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   profileInfo: {
     flex: 1,
@@ -841,89 +1066,170 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 18,
     fontWeight: "700",
+    color: '#FFF',
     marginBottom: 2,
+    letterSpacing: 0.2,
   },
   profileEmail: {
     fontSize: 13,
+    fontWeight: "500",
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.1,
   },
-  quickStatsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  quickStatCard: {
-    flex: 1,
-    padding: 16,
+  profileChevron: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  quickStatIcon: {
+
+  // Stats Container
+  statsContainer: {
+    marginTop: 4,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  miniStatCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    gap: 10,
+  },
+  miniStatIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  quickStatValue: {
-    fontSize: 20,
+  miniStatContent: {
+    flex: 1,
+  },
+  miniStatValue: {
+    fontSize: 18,
     fontWeight: "700",
-    marginBottom: 2,
+    color: '#FFF',
+    letterSpacing: 0.2,
   },
-  quickStatLabel: {
+  miniStatLabel: {
     fontSize: 11,
-    fontWeight: "500",
+    fontWeight: "600",
+    color: 'rgba(255,255,255,0.7)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginTop: 1,
   },
+
+  // Scroll Content
   scrollContent: {
-    padding: 20,
-    paddingTop: 12,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
+
+  // Section
   section: {
-    marginBottom: 28,
+    marginBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  sectionIconWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 12,
-    paddingHorizontal: 4,
+    letterSpacing: 1,
+  },
+
+  // Card
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  divider: {
+    height: 1,
+    marginLeft: 70,
+  },
+
+  // Footer
+  footer: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 20,
+    gap: 4,
   },
   version: {
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
   },
+  footerText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+
   // Modal Styles
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     padding: 20,
   },
   modalContent: {
     width: "100%",
-    maxWidth: 400,
-    borderRadius: 20,
-    padding: 24,
-    elevation: 8,
+    maxWidth: 420,
+    borderRadius: 24,
+    padding: 28,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 8,
@@ -932,103 +1238,188 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     fontSize: 14,
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 28,
     lineHeight: 20,
   },
+  
+  // Range Options
   rangeContainer: {
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 28,
   },
   rangeOption: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1.5,
+    flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 52,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+  rangeContent: {
+    flex: 1,
   },
   rangeText: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 2,
   },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  rangeDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Modal Button
+  modalButton: {
+    overflow: 'hidden',
+    borderRadius: 16,
+  },
+  modalButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 10,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: '#FFF',
+    letterSpacing: 0.3,
+  },
+
+  // Theme Grid
+  themeGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 28,
+  },
+  themeCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 2,
     gap: 12,
   },
-  modalBtn: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 50,
+  themeIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalBtnText: {
+  themeLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  themeDesc: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  activeBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Language List
+  languageList: {
+    gap: 12,
+    marginBottom: 28,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    gap: 12,
+  },
+  languageFlag: {
+    fontSize: 28,
+  },
+  languageText: {
+    flex: 1,
     fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.3,
+    fontWeight: '600',
+  },
+
+  // Settings Rows
+  settingsContainer: {
+    gap: 0,
+    marginBottom: 28,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 18,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  settingLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginRight: 12,
+  },
+  settingIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   settingLabel: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 3,
     letterSpacing: -0.2,
   },
   settingDescription: {
     fontSize: 13,
-    lineHeight: 19,
-    opacity: 0.85,
+    lineHeight: 18,
+    fontWeight: '500',
   },
-  themeGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  themeCard: {
+
+  // Stats Card (if needed separately)
+  statCard: {
     flex: 1,
+    padding: 18,
+    borderRadius: 18,
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 8,
-    borderRadius: 16,
-    borderWidth: 2,
-    gap: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  themeIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.03)',
-  },
-  themeLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  activeBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  statIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
   },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 5,
-    padding: 4,
+  statValue: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
 });
