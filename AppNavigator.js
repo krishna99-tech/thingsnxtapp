@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   View,
   Platform,
@@ -6,6 +6,9 @@ import {
   Text,
   PermissionsAndroid,
   Linking,
+  Animated,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import { 
   NavigationContainer, 
@@ -17,6 +20,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Context & Components
 import { useAuth } from "./context/AuthContext";
@@ -41,67 +46,164 @@ import WebhooksScreen from "./screens/WebhooksScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const { width: screenWidth } = Dimensions.get("window");
+
+// Helper function for alpha colors
+const alpha = (hex, opacity) => {
+  const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
+  return hex + o;
+};
+
+/**
+ * Custom Tab Bar Component
+ * Elegant floating tab bar with enhanced design
+ */
+function CustomTabBar({ state, descriptors, navigation, isDarkTheme }) {
+  const insets = useSafeAreaInsets();
+  
+  const tabColors = {
+    darkBackground: "#1C1F26",
+    lightBackground: "#FFFFFF",
+    darkBorder: "#30363D",
+    lightBorder: "#E5E7EB",
+  };
+
+  const isLight = !isDarkTheme;
+  const backgroundColor = isLight ? tabColors.lightBackground : tabColors.darkBackground;
+  const borderColor = isLight ? tabColors.lightBorder : tabColors.darkBorder;
+  const textColor = isLight ? "#111827" : "#E6EDF3";
+  const accentColor = isLight ? "#3B82F6" : "#00D9FF";
+  const inactiveColor = isLight ? "#9CA3AF" : "#6E7681";
+
+  return (
+    <View style={[
+      styles.customTabBarContainer,
+      { paddingBottom: Math.max(insets.bottom, 16) }
+    ]}>
+      <View style={[
+        styles.customTabBar,
+        {
+          backgroundColor: backgroundColor,
+          borderColor: borderColor,
+          borderTopColor: borderColor,
+        }
+      ]}>
+        {/* Gradient Accent Line */}
+        <LinearGradient
+          colors={[accentColor, accentColor + '00']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.tabBarAccentLine}
+        />
+
+        {/* Tab Items */}
+        <View style={styles.tabItemsContainer}>
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const isFocused = state.index === index;
+
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                preventDefault: () => {},
+              });
+
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
+
+            const onLongPress = () => {
+              navigation.emit({
+                type: 'tabLongPress',
+                target: route.key,
+              });
+            };
+
+            // Get icon based on route
+            const getIcon = (name, focused) => {
+              const iconSize = 24;
+              const iconColor = isFocused ? accentColor : inactiveColor;
+
+              const iconMap = {
+                Home: <Ionicons name={focused ? "home" : "home-outline"} size={iconSize} color={iconColor} />,
+                Devices: <MaterialCommunityIcons name="developer-board" size={iconSize} color={iconColor} />,
+                Dashboards: <MaterialCommunityIcons name={focused ? "view-dashboard" : "view-dashboard-outline"} size={iconSize} color={iconColor} />,
+                Notifications: <Ionicons name={focused ? "notifications" : "notifications-outline"} size={iconSize} color={iconColor} />,
+                Settings: <Ionicons name={focused ? "settings" : "settings-outline"} size={iconSize} color={iconColor} />,
+              };
+
+              return iconMap[name] || <Ionicons name="ellipse-outline" size={iconSize} color={iconColor} />;
+            };
+
+            return (
+              <View key={route.key} style={styles.tabItem}>
+                <Pressable
+                  onPress={onPress}
+                  onLongPress={onLongPress}
+                  style={[
+                    styles.tabItemButton,
+                    isFocused && [
+                      styles.tabItemButtonActive,
+                      { backgroundColor: alpha(accentColor, 0.08) }
+                    ]
+                  ]}
+                  android_ripple={{
+                    color: accentColor,
+                    radius: 20,
+                  }}
+                >
+                  {/* Icon */}
+                  <View style={styles.tabIconWrapper}>
+                    {getIcon(route.name, isFocused)}
+                    {isFocused && (
+                      <View 
+                        style={[
+                          styles.tabIndicatorDot,
+                          { backgroundColor: accentColor }
+                        ]} 
+                      />
+                    )}
+                  </View>
+
+                  {/* Label */}
+                  {isFocused && (
+                    <Text 
+                      style={[
+                        styles.tabLabel,
+                        { color: accentColor }
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {route.name}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+}
 
 /**
  * Main Tab Navigation
- * Features a floating, theme-aware bottom bar
+ * Features enhanced floating bottom navigation
  */
 function MainTabs() {
   const { colors, dark: isDarkTheme } = useTheme();
 
-  const tabBarColors = useMemo(() => ({
-    active: colors.primary,
-    inactive: colors.text,
-    background: colors.card,
-  }), [colors]);
-
-  const tabBarStyle = useMemo(() => ({
-    position: "absolute",
-    bottom: 25,
-    left: 20,
-    right: 20,
-    elevation: 5,
-    backgroundColor: tabBarColors.background,
-    borderRadius: 15,
-    height: 70,
-    paddingBottom: 8,
-    borderTopWidth: 0,
-    shadowColor: isDarkTheme ? colors.primary : '#171717',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: isDarkTheme ? 0.3 : 0.1,
-    shadowRadius: 4,
-  }), [tabBarColors, colors.primary, isDarkTheme]);
-
   return (
     <Tab.Navigator
       initialRouteName="Home"
-      screenOptions={({ route }) => ({
+      tabBar={(props) => <CustomTabBar {...props} isDarkTheme={isDarkTheme} />}
+      screenOptions={{
         headerShown: false,
-        tabBarHideOnKeyboard: true, 
-        tabBarActiveTintColor: tabBarColors.active,
-        tabBarInactiveTintColor: tabBarColors.inactive,
-        tabBarStyle: tabBarStyle,
-        tabBarIcon: ({ color, size, focused }) => {
-          switch (route.name) {
-            case "Home":
-              return <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />;
-            case "Devices":
-              return <MaterialCommunityIcons name="developer-board" size={size} color={color} />;
-            case "Dashboards":
-              return <MaterialCommunityIcons name={focused ? "view-dashboard" : "view-dashboard-outline"} size={size} color={color} />;
-            case "Notifications":
-              return <Ionicons name={focused ? "notifications" : "notifications-outline"} size={size} color={color} />;
-            case "Settings":
-              return <Ionicons name={focused ? "settings" : "settings-outline"} size={size} color={color} />;
-            default:
-              return <Ionicons name="ellipse-outline" size={size} color={color} />;
-          }
-        },
-        tabBarLabel: ({ focused, color }) => {
-          if (!focused) return null;
-          return <Text style={{ color, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>{route.name}</Text>;
-        },
-      })}
+        tabBarHideOnKeyboard: true,
+      }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Devices" component={DevicesScreen} />
@@ -118,6 +220,7 @@ function MainTabs() {
  */
 export default function RootNavigator() {
   const { userToken, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
+  const [appState, setAppState] = useState('active');
 
   useEffect(() => {
     const requestPermission = async () => {
@@ -143,39 +246,137 @@ export default function RootNavigator() {
       }
     };
     requestPermission();
-  }, []);
+  }, [showAlert]);
 
-  const customTheme = isDarkTheme ? DarkTheme : { 
-    ...DefaultTheme, 
-    colors: { ...DefaultTheme.colors, background: '#F1F5F9' }
-  };
+  // Enhanced custom theme with better color palette
+  const customTheme = isDarkTheme 
+    ? {
+        ...DarkTheme,
+        colors: {
+          ...DarkTheme.colors,
+          primary: '#00D9FF',
+          background: '#0F1117',
+          card: '#1C1F26',
+          text: '#E6EDF3',
+          border: '#30363D',
+        }
+      }
+    : {
+        ...DefaultTheme,
+        colors: {
+          ...DefaultTheme.colors,
+          primary: '#3B82F6',
+          background: '#F9FAFB',
+          card: '#FFFFFF',
+          text: '#111827',
+          border: '#E5E7EB',
+        }
+      };
 
   return (
     <NavigationContainer theme={customTheme}>
-      <StatusBar style={isDarkTheme ? "light" : "dark"} />
+      <StatusBar 
+        style={isDarkTheme ? "light" : "dark"}
+        translucent={false}
+        backgroundColor={customTheme.colors.background}
+      />
       
       <Stack.Navigator 
         screenOptions={{ 
-          headerStyle: { backgroundColor: isDarkTheme ? '#1A1F3A' : '#FFFFFF' },
-          headerTintColor: isDarkTheme ? '#FFFFFF' : '#1E293B',
-          headerTitleStyle: { fontWeight: 'bold' },
+          headerStyle: { 
+            backgroundColor: isDarkTheme ? '#1C1F26' : '#FFFFFF',
+            borderBottomWidth: 1,
+            borderBottomColor: isDarkTheme ? '#30363D' : '#E5E7EB',
+          },
+          headerTintColor: isDarkTheme ? '#E6EDF3' : '#111827',
+          headerTitleStyle: { 
+            fontWeight: '700',
+            letterSpacing: -0.3,
+          },
           headerShadowVisible: false,
+          cardStyle: {
+            backgroundColor: isDarkTheme ? '#0F1117' : '#F9FAFB',
+          },
         }}
       >
         {userToken ? (
+          // ============================================
           // Authenticated App Flow
+          // ============================================
           <Stack.Group>
-            <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+            {/* Main Tab Navigation */}
+            <Stack.Screen 
+              name="MainTabs" 
+              component={MainTabs} 
+              options={{ 
+                headerShown: false,
+                animationEnabled: true,
+              }} 
+            />
             
-            {/* Standard Detail Screens */}
-            <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+            {/* Full-Screen Detail Screen */}
+            <Stack.Screen 
+              name="Dashboard" 
+              component={DashboardScreen} 
+              options={{ 
+                headerShown: false,
+                animationEnabled: true,
+              }} 
+            />
             
-            {/* Modal-style Screens */}
-            <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ presentation: 'modal'}} />
-            <Stack.Screen name="Profile" component={ProfileScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="ConnectedApps" component={ConnectedAppsScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="Webhooks" component={WebhooksScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ presentation: 'modal'}} />
+            {/* Modal-style Screens with improved presentation */}
+            <Stack.Screen 
+              name="DeviceDetail" 
+              component={DeviceDetailScreen} 
+              options={{ 
+                presentation: 'card',
+                animationEnabled: true,
+                headerStyle: {
+                  backgroundColor: 'transparent',
+                },
+                headerTitle: 'Device Details',
+              }} 
+            />
+
+            <Stack.Screen 
+              name="Profile" 
+              component={ProfileScreen} 
+              options={{ 
+                presentation: 'card',
+                animationEnabled: true,
+                headerTitle: 'Profile Settings',
+              }} 
+            />
+
+            <Stack.Screen 
+              name="ConnectedApps" 
+              component={ConnectedAppsScreen} 
+              options={{ 
+                presentation: 'card',
+                animationEnabled: true,
+                headerTitle: 'Connected Applications',
+              }} 
+            />
+
+            <Stack.Screen 
+              name="Webhooks" 
+              component={WebhooksScreen} 
+              options={{ 
+                presentation: 'card',
+                animationEnabled: true,
+                headerTitle: 'Webhooks Configuration',
+              }} 
+            />
+
+            <Stack.Screen 
+              name="ForgotPassword" 
+              component={ForgotPasswordScreen} 
+              options={{ 
+                presentation: 'card',
+                animationEnabled: true,
+                headerTitle: 'Reset Password',
+              }} 
+            />
             
             {/* Custom Transparent Bottom Sheet Screen */}
             <Stack.Screen 
@@ -184,21 +385,57 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: false, 
                 presentation: "transparentModal", 
-                animation: "slide_from_bottom" 
+                animationEnabled: true,
+                cardStyle: { 
+                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                  opacity: 1,
+                },
               }} 
             />
           </Stack.Group>
         ) : (
-          // Auth Flow
+          // ============================================
+          // Authentication Flow
+          // ============================================
           <Stack.Group screenOptions={{ 
             headerShown: false, 
-            presentation: 'transparentModal', 
-            animation: 'slide_from_bottom' 
+            presentation: 'transparentModal',
+            animationEnabled: true,
+            cardStyle: {
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            }
           }}>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen}
+              options={{
+                animationEnabled: false,
+                cardStyle: {
+                  backgroundColor: isDarkTheme ? '#0F1117' : '#F9FAFB',
+                },
+              }}
+            />
+            <Stack.Screen 
+              name="Signup" 
+              component={SignupScreen}
+              options={{
+                gestureEnabled: true,
+              }}
+            />
+            <Stack.Screen 
+              name="ForgotPassword" 
+              component={ForgotPasswordScreen}
+              options={{
+                gestureEnabled: true,
+              }}
+            />
+            <Stack.Screen 
+              name="ResetPassword" 
+              component={ResetPasswordScreen}
+              options={{
+                gestureEnabled: true,
+              }}
+            />
           </Stack.Group>
         )}
       </Stack.Navigator>
@@ -212,7 +449,75 @@ export default function RootNavigator() {
   );
 }
 
+// ============================================
+// Styles
+// ============================================
 const styles = StyleSheet.create({
+  // Custom Tab Bar
+  customTabBarContainer: {
+    backgroundColor: 'transparent',
+  },
+  customTabBar: {
+    flexDirection: 'row',
+    height: 70,
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  tabBarAccentLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+  },
+  tabItemsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  tabItem: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tabItemButton: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'column',
+    gap: 4,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  tabItemButtonActive: {
+    borderRadius: 12,
+  },
+  tabIconWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tabIndicatorDot: {
+    position: 'absolute',
+    bottom: -8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+
+  // Loader
   loaderContainer: {
     flex: 1,
     alignItems: "center",

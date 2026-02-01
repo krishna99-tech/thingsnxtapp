@@ -13,7 +13,7 @@ import EnergyBarWidget from './EnergyBarWidget';
 import StatusIndicator from './StatusIndicator';
 import TankLevelWidget from './TankLevelWidget';
 import ThermometerWidget from './ThermometerWidget';
-import LineChartWidget from './LineChartWidget'
+// import LineChartWidget from './LineChartWidget'
 
 // 🗺️ Create a mapping from widget type to component
 const WIDGET_COMPONENTS = {
@@ -29,7 +29,7 @@ const WIDGET_COMPONENTS = {
   tank: TankLevelWidget,
   thermometer: ThermometerWidget,
   card: CardWidget, // Default fallback
-  line_chart: LineChartWidget,
+  // line_chart: LineChartWidget,
 };
 
 /**
