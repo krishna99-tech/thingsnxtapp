@@ -500,51 +500,53 @@ export default function DevicesScreen({ navigation }) {
           </View>
 
           <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.title}>
+            <View style={styles.headerTitleRow}>
+              <Text style={styles.title} numberOfLines={1}>
                 {isSelectionMode ? `${selectedDeviceIds.size} Selected` : "Devices"}
               </Text>
-              {!isSelectionMode && (
-                <Text style={styles.subtitle}>
-                  {devices.length} Connected Device{devices.length !== 1 ? 's' : ''}
-                </Text>
-              )}
-            </View>
-            <View style={styles.headerActions}>
-              {isSelectionMode ? (
-                <>
+              
+              <View style={styles.headerActions}>
+                {isSelectionMode ? (
+                  <>
+                    <TouchableOpacity 
+                      style={styles.headerActionButton} 
+                      onPress={selectedDeviceIds.size === filteredDevices.length ? deselectAllDevices : selectAllDevices}
+                    >
+                      {selectedDeviceIds.size === filteredDevices.length ? (
+                        <X size={20} color="#FFF" strokeWidth={2.5} />
+                      ) : (
+                        <CheckCircle size={20} color="#FFF" strokeWidth={2.5} />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.closeButton} 
+                      onPress={toggleSelectionMode}
+                    >
+                      <X size={22} color="#FFF" strokeWidth={2.5} />
+                    </TouchableOpacity>
+                  </>
+                ) : (
                   <TouchableOpacity 
-                    style={styles.headerActionButton} 
-                    onPress={selectedDeviceIds.size === filteredDevices.length ? deselectAllDevices : selectAllDevices}
+                    style={styles.addButton} 
+                    onPress={() => setAddDeviceModalVisible(true)}
+                    activeOpacity={0.8}
                   >
-                    {selectedDeviceIds.size === filteredDevices.length ? (
-                      <X size={20} color="#FFF" strokeWidth={2.5} />
-                    ) : (
-                      <CheckCircle size={20} color="#FFF" strokeWidth={2.5} />
-                    )}
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.15)']}
+                      style={styles.addButtonGradient}
+                    >
+                      <Plus size={24} color="#FFF" strokeWidth={2.5} />
+                    </LinearGradient>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.closeButton} 
-                    onPress={toggleSelectionMode}
-                  >
-                    <X size={22} color="#FFF" strokeWidth={2.5} />
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity 
-                  style={styles.addButton} 
-                  onPress={() => setAddDeviceModalVisible(true)}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.15)']}
-                    style={styles.addButtonGradient}
-                  >
-                    <Plus size={24} color="#FFF" strokeWidth={2.5} />
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
+                )}
+              </View>
             </View>
+
+            {!isSelectionMode && (
+              <Text style={styles.subtitle}>
+                {devices.length} Connected {devices.length === 1 ? 'Device' : 'Devices'}
+              </Text>
+            )}
           </View>
 
           <View style={styles.searchContainer}>
@@ -741,9 +743,16 @@ export default function DevicesScreen({ navigation }) {
                 </View>
               </View>
 
-              <View style={styles.modalButtons}>
+              <View style={[styles.modalButtons, { borderTopColor: Colors.border }]}>
                 <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+                  style={[
+                    styles.modalBtn, 
+                    { 
+                      backgroundColor: 'transparent',
+                      borderWidth: 1.5,
+                      borderColor: Colors.border,
+                    }
+                  ]}
                   onPress={() => setAddDeviceModalVisible(false)}
                   activeOpacity={0.7}
                 >
@@ -822,9 +831,16 @@ export default function DevicesScreen({ navigation }) {
                 </View>
               </View>
 
-              <View style={styles.modalButtons}>
+              <View style={[styles.modalButtons, { borderTopColor: Colors.border }]}>
                 <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+                  style={[
+                    styles.modalBtn, 
+                    { 
+                      backgroundColor: 'transparent',
+                      borderWidth: 1.5,
+                      borderColor: Colors.border,
+                    }
+                  ]}
                   onPress={handleCloseEditModal}
                   activeOpacity={0.7}
                 >
@@ -1009,18 +1025,22 @@ const styles = StyleSheet.create({
     left: -30,
   },
   headerContent: {
+    marginBottom: 20,
+    zIndex: 1,
+  },
+  headerTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
-    zIndex: 1,
+    marginBottom: 4,
   },
   title: {
     fontSize: 32,
     fontWeight: "800",
     color: '#FFF',
     letterSpacing: -0.5,
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 12,
   },
   subtitle: {
     fontSize: 14,
@@ -1030,7 +1050,8 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
   },
   headerActionButton: {
     width: 44,
@@ -1369,6 +1390,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
     letterSpacing: 0.3,
+    textAlign: 'center',
   },
 
   // Modals
@@ -1441,15 +1463,22 @@ const styles = StyleSheet.create({
   },
   modalButtons: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12, // Reduced gap for better fit
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150, 150, 150, 0.1)',
   },
   modalBtn: {
-    flex: 1,
-    borderRadius: 16,
+    flex: 1, // Restored flex: 1 for equal width
+    borderRadius: 14,
     overflow: 'hidden',
-    minHeight: 52,
+    height: 50, // Slightly more compact
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 0,
   },
   modalBtnGradient: {
     width: '100%',
@@ -1458,15 +1487,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnText: {
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   modalBtnTextPrimary: {
-    fontSize: 16,
-    fontWeight: "800",
+    fontSize: 15,
+    fontWeight: "700",
     color: '#FFF',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 
   // Sort Options

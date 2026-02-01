@@ -1,60 +1,71 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { CheckCircle, XCircle, AlertTriangle, HelpCircle, Info } from 'lucide-react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { Check, X, AlertTriangle, AlertCircle, Info } from 'lucide-react-native';
 import { getModalColors } from '../utils/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const ICONS = {
-  success: (color) => <CheckCircle size={48} color={color} />,
-  error: (color) => <XCircle size={48} color={color} />,
-  warning: (color) => <AlertTriangle size={48} color={color} />,
-  confirm: (color) => <HelpCircle size={48} color={color} />,
-  info: (color) => <Info size={48} color={color} />,
-};
-
-const COLORS = {
-  success: '#28a745',
-  error: '#dc3545',
-  warning: '#ffc107',
-  confirm: '#17a2b8',
-  info: '#17a2b8',
+  success: {
+    icon: Check,
+    colors: ['#22C55E', '#16A34A'],
+    bg: 'rgba(34, 197, 94, 0.1)',
+  },
+  error: {
+    icon: X,
+    colors: ['#EF4444', '#DC2626'],
+    bg: 'rgba(239, 68, 68, 0.1)',
+  },
+  warning: {
+    icon: AlertTriangle,
+    colors: ['#F59E0B', '#D97706'],
+    bg: 'rgba(245, 158, 11, 0.1)',
+  },
+  confirm: {
+    icon: AlertCircle,
+    colors: ['#3B82F6', '#2563EB'],
+    bg: 'rgba(59, 130, 246, 0.1)',
+  },
+  info: {
+    icon: Info,
+    colors: ['#06B6D4', '#0891B2'],
+    bg: 'rgba(6, 182, 212, 0.1)',
+  },
 };
 
 const CustomAlert = ({
   visible,
-  type = 'confirm', // 'success', 'error', 'warning', 'confirm'
+  type = 'confirm', // 'success', 'error', 'warning', 'confirm', 'info'
   title,
   message,
   buttons = [],
   isDarkTheme,
 }) => {
-  const ThemeColors = {
-    ...getModalColors(isDarkTheme),
-    primaryButton: '#3B82F6',
-    primaryButtonText: '#FFFFFF',
-    destructiveButton: '#DC2626',
-  };
+  const ThemeColors = getModalColors(isDarkTheme);
+  const config = ICONS[type] || ICONS.confirm;
+  const IconComponent = config.icon;
 
   const BUTTON_STYLES = {
     primary: {
-      backgroundColor: ThemeColors.primaryButton,
-      color: ThemeColors.primaryButtonText,
+      bg: ['#3B82F6', '#2563EB'],
+      text: '#FFFFFF',
+      border: 'transparent',
     },
     destructive: {
-      backgroundColor: ThemeColors.destructiveButton,
-      color: ThemeColors.primaryButtonText,
+      bg: ['#EF4444', '#DC2626'],
+      text: '#FFFFFF',
+      border: 'transparent',
     },
     cancel: {
-      backgroundColor: ThemeColors.surfaceLight,
-      color: ThemeColors.buttonText,
+      bg: isDarkTheme ? ['transparent', 'transparent'] : ['#F1F5F9', '#E2E8F0'],
+      text: isDarkTheme ? '#94A3B8' : '#64748B',
+      border: isDarkTheme ? '#334155' : 'transparent',
     },
-    // Default style for any unrecognized button style
     default: {
-      backgroundColor: ThemeColors.surfaceLight,
-      color: ThemeColors.buttonText,
+      bg: isDarkTheme ? ['#334155', '#1E293B'] : ['#F1F5F9', '#E2E8F0'],
+      text: isDarkTheme ? '#E2E8F0' : '#475569',
+      border: 'transparent',
     },
   };
-
-  const iconColor = COLORS[type] || COLORS.confirm;
 
   return (
     <Modal
@@ -62,17 +73,24 @@ const CustomAlert = ({
       transparent
       animationType="fade"
       onRequestClose={() => {
-        // Find a cancel button to trigger on back press
         const cancelButton = buttons.find(b => b.style === 'cancel');
         if (cancelButton?.onPress) {
           cancelButton.onPress();
         }
       }}
     >
-      <View style={[styles.container, { backgroundColor: ThemeColors.background }]}>
+      <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: ThemeColors.card }]}>
-          <View style={styles.iconContainer}>
-            {ICONS[type](iconColor)}
+          {/* Decorative Icon Background */}
+          <View style={[styles.iconWrapper, { backgroundColor: config.bg }]}>
+            <LinearGradient
+              colors={config.colors}
+              style={styles.iconContainer}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <IconComponent size={32} color="#FFF" strokeWidth={2.5} />
+            </LinearGradient>
           </View>
 
           <Text style={[styles.title, { color: ThemeColors.title }]}>{title}</Text>
@@ -80,24 +98,40 @@ const CustomAlert = ({
 
           <View style={styles.buttonContainer}>
             {buttons.map((button, index) => {
-              // Get the style config for the button, or use default
-              const styleConfig = BUTTON_STYLES[button.style] || BUTTON_STYLES.default;
-
-              const buttonStyle = [
-                styles.button,
-                { backgroundColor: styleConfig.backgroundColor },
-              ];
-              const textStyle = [
-                styles.buttonText, { color: styleConfig.color }
-              ];
+              const styleKey = button.style || 'default';
+              const styleConfig = BUTTON_STYLES[styleKey] || BUTTON_STYLES.default;
+              
+              // Special handling for cancel button which might be outlined
+              const isOutlined = styleKey === 'cancel' && isDarkTheme;
 
               return (
                 <TouchableOpacity
                   key={index}
-                  style={buttonStyle}
+                  style={[
+                    styles.button,
+                    isOutlined && { borderWidth: 1.5, borderColor: styleConfig.border }
+                  ]}
                   onPress={button.onPress}
+                  activeOpacity={0.8}
                 >
-                  <Text style={textStyle}>{button.text}</Text>
+                  {!isOutlined ? (
+                    <LinearGradient
+                      colors={styleConfig.bg}
+                      style={styles.gradientButton}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Text style={[styles.buttonText, { color: styleConfig.text }]}>
+                        {button.text}
+                      </Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[styles.gradientButton, { backgroundColor: 'transparent' }]}>
+                      <Text style={[styles.buttonText, { color: styleConfig.text }]}>
+                        {button.text}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -109,38 +143,59 @@ const CustomAlert = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
   card: {
-    width: '95%',
-    maxWidth: 340,
-    borderRadius: 20,
-    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  iconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   iconContainer: {
-    marginBottom: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
   },
   title: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    letterSpacing: -0.5,
   },
   message: {
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
+    marginBottom: 28,
+    opacity: 0.9,
+    paddingHorizontal: 8,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -150,15 +205,20 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
+    height: 52,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  gradientButton: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
-    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });
 
