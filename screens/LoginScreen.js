@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import CustomAlert from "../components/CustomAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { usePlatformConfig } from "../context/PlatformConfigContext";
 
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState(""); // email or username
@@ -25,7 +26,13 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const { login, isDarkTheme, showAlert } = useAuth();
+  const { config: platformConfig } = usePlatformConfig();
   const navigation = useNavigation();
+  const appTitle = platformConfig?.branding?.app_display_name || "ThingsNXT";
+  const maintenance = platformConfig?.mobile_app?.maintenance_mode;
+  const maintenanceMsg =
+    platformConfig?.mobile_app?.maintenance_message ||
+    "We are performing maintenance. You may experience limited functionality.";
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
@@ -96,10 +103,25 @@ export default function LoginScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.content}>
+              {maintenance ? (
+                <View
+                  style={{
+                    backgroundColor: "#d97706",
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    marginBottom: 16,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700", textAlign: "center" }}>
+                    {maintenanceMsg}
+                  </Text>
+                </View>
+              ) : null}
               {/* Header */}
               <View style={styles.header}>
                 <Text style={styles.title}>Welcome Back 👋</Text>
-                <Text style={styles.subtitle}>Login to your ThingsNXT dashboard</Text>
+                <Text style={styles.subtitle}>Login to your {appTitle} dashboard</Text>
               </View>
 
               {/* Email / Username */}

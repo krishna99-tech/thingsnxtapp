@@ -12,6 +12,7 @@ import {
   Wifi,
   WifiOff,
   AlertTriangle,
+  Zap,
 } from 'lucide-react-native';
 
 const getDeviceIcon = (type, size = 24, color = "#FFFFFF") => {
@@ -26,34 +27,35 @@ const getDeviceIcon = (type, size = 24, color = "#FFFFFF") => {
     case "door":
       return <DoorClosed {...iconProps} />;
     default:
-      return <Cpu {...iconProps} />;
+      return <Zap {...iconProps} />;
   }
 };
 
-const getStatusIcon = (status, size = 16) => {
+const getStatusColor = (status) => {
   switch (status) {
     case "online":
-      return <Wifi size={size} color="#00FF88" />;
+      return "#00FF88"; // Neon Mint
     case "offline":
-      return <WifiOff size={size} color="#FF3366" />;
+      return "#FF3366"; // Cyber Pink
     case "warning":
-      return <AlertTriangle size={size} color="#FFB800" />;
+      return "#FFB800"; // Tactical Amber
     default:
-      return null;
+      return "#8B91A7";
   }
 };
 
 const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
   const Colors = {
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#F1F5F9",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-    success: "#00FF88",
+    primary: "#3b82f6",
+    bg: isDarkTheme ? "#020617" : "#F8FAFC",
+    surface: isDarkTheme ? "rgba(30, 41, 59, 0.4)" : "#FFFFFF",
+    border: isDarkTheme ? "rgba(255, 255, 255, 0.05)" : "#E2E8F0",
+    text: isDarkTheme ? "#F1F5F9" : "#1E293B",
+    textMuted: isDarkTheme ? "rgba(148, 163, 184, 0.6)" : "#64748B",
+    accent: "#3b82f6",
   };
+
+  const statusColor = getStatusColor(device.status);
 
   const renderRightActions = (progress, dragX) => {
     const trans = dragX.interpolate({
@@ -62,9 +64,9 @@ const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
       extrapolate: "clamp",
     });
     return (
-      <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
-        <Animated.View style={[styles.deleteButtonView, { transform: [{ translateX: trans }] }]}>
-          <Trash size={24} color="#FFFFFF" />
+      <TouchableOpacity onPress={onDelete} style={styles.actionContainer}>
+        <Animated.View style={[styles.deleteButton, { transform: [{ translateX: trans }] }]}>
+          <Trash size={22} color="#FFFFFF" strokeWidth={2.5} />
         </Animated.View>
       </TouchableOpacity>
     );
@@ -77,9 +79,9 @@ const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
       extrapolate: "clamp",
     });
     return (
-      <TouchableOpacity onPress={onEdit} style={styles.editButton}>
-        <Animated.View style={[styles.editButtonView, { transform: [{ translateX: trans }] }]}>
-          <Edit size={24} color="#FFFFFF" />
+      <TouchableOpacity onPress={onEdit} style={styles.actionContainer}>
+        <Animated.View style={[styles.editButton, { transform: [{ translateX: trans }] }]}>
+          <Edit size={22} color="#FFFFFF" strokeWidth={2.5} />
         </Animated.View>
       </TouchableOpacity>
     );
@@ -89,47 +91,42 @@ const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
     <Swipeable
       renderRightActions={renderRightActions}
       renderLeftActions={renderLeftActions}
-      overshootRight={false}
-      overshootLeft={false}
+      friction={2}
+      leftThreshold={30}
+      rightThreshold={40}
     >
       <TouchableOpacity
-        style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
+        style={[
+          styles.card,
+          { 
+            backgroundColor: Colors.surface, 
+            borderColor: Colors.border,
+          }
+        ]}
         onPress={onPress}
-        activeOpacity={0.7}
+        activeOpacity={0.8}
       >
-        <View style={styles.deviceCardContent}>
-          <View
-            style={[
-              styles.deviceIcon,
-              {
-                backgroundColor:
-                  device.status === "online"
-                    ? Colors.primary + "20"
-                    : Colors.surfaceLight,
-              },
-            ]}
-          >
-            {getDeviceIcon(device.type, 28, Colors.primary)}
+        <View style={styles.header}>
+          <View style={[styles.iconBox, { backgroundColor: isDarkTheme ? "rgba(59, 130, 246, 0.1)" : "#EFF6FF" }]}>
+            {getDeviceIcon(device.type, 26, Colors.primary)}
+          </View>
+          
+          <View style={styles.body}>
+            <Text style={[styles.name, { color: Colors.text }]}>{device.name}</Text>
+            <View style={styles.metaRow}>
+                <Text style={[styles.type, { color: Colors.textMuted }]}>{device.type.toUpperCase()}</Text>
+                <View style={[styles.statusDot, { backgroundColor: statusColor, shadowColor: statusColor, shadowOpacity: 0.5, shadowRadius: 5, elevation: 5 }]} />
+                <Text style={[styles.statusText, { color: statusColor }]}>{device.status.toUpperCase()}</Text>
+            </View>
           </View>
 
-          <View style={styles.deviceInfo}>
-            <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
-              {device.name}
-            </Text>
-            <Text style={[styles.deviceRoom, { color: Colors.textMuted }]}>{device.type}</Text>
-          </View>
-
-          <View style={styles.deviceRight}>
-            {getStatusIcon(device.status, 16)}
-
-            {device.value !== undefined && (
-              <View style={[styles.deviceValue, { backgroundColor: Colors.primary + "20" }]}>
-                <Text style={[styles.deviceValueText, { color: Colors.primary }]}>
-                  {String(device.value)}
-                </Text>
-              </View>
-            )}
-          </View>
+          {device.value !== undefined && (
+            <View style={[styles.valueBadge, { backgroundColor: isDarkTheme ? "rgba(59, 130, 246, 0.08)" : "#F1F5F9" }]}>
+              <Text style={[styles.valueText, { color: Colors.primary }]}>
+                {String(device.value)}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     </Swipeable>
@@ -137,56 +134,100 @@ const DeviceCard = ({ device, onPress, isDarkTheme, onEdit, onDelete }) => {
 };
 
 const styles = StyleSheet.create({
-  deviceCard: {
-    borderRadius: 16,
+  card: {
+    borderRadius: 24,
     padding: 16,
     borderWidth: 1,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 4,
+  },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
   },
-  deviceCardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  deviceIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+  iconBox: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.03)",
   },
-  deviceInfo: {
+  body: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: 18,
   },
-  deviceName: {
-    fontSize: 16,
-    fontWeight: "600",
+  name: {
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: -0.5,
     marginBottom: 4,
   },
-  deviceRoom: {
-    fontSize: 14,
-  },
-  deviceRight: {
-    alignItems: "flex-end",
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  deviceValue: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+  type: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
-  deviceValueText: {
-    fontSize: 14,
-    fontWeight: "600",
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  deleteButton: { width: 80, justifyContent: "center", alignItems: "center", marginBottom: 12 },
-  deleteButtonView: { flex: 1, backgroundColor: "#FF3B30", justifyContent: "center", alignItems: "center", width: 80, borderRadius: 16 },
-  editButton: { width: 80, justifyContent: "center", alignItems: "center", marginBottom: 12 },
-  editButtonView: { flex: 1, backgroundColor: "#3498db", justifyContent: "center", alignItems: "center", width: 80, borderRadius: 16 },
+  statusText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  valueBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.05)",
+  },
+  valueText: {
+    fontSize: 15,
+    fontWeight: "900",
+    fontVariant: ['tabular-nums'],
+  },
+  actionContainer: {
+    width: 80,
+    height: '85%', // Align with card height approx
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 0,
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: "#FF3366",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 70,
+    borderRadius: 20,
+    marginRight: 10,
+    height: '100%'
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: "#3b82f6",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 70,
+    borderRadius: 20,
+    marginLeft: 10,
+    height: '100%'
+  },
 });
 
 export default DeviceCard;

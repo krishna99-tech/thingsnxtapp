@@ -70,7 +70,11 @@ class API {
       // Error handling
       if (!response.ok) {
         // If we get a 401, try to refresh the token
-        if (response.status === 401 && !options._isRetry) {
+        if (
+          response.status === 401 &&
+          !options._isRetry &&
+          !options.skipAuthRefresh
+        ) {
           debugLog("🔑 Token expired. Attempting refresh...");
           try {
             const { access_token, refresh_token } = await this.refreshToken();
@@ -185,7 +189,10 @@ class API {
 
   // LOGOUT
   async logout() {
-    await this.request("/logout", { method: "POST" });
+    await this.request("/logout", {
+      method: "POST",
+      skipAuthRefresh: true,
+    });
     await AsyncStorage.multiRemove(["userToken", "refreshToken", "username"]);
     debugLog("👋 Logged out");
   }
@@ -193,6 +200,62 @@ class API {
   // PROFILE
   async getProfile() {
     return this.request("/me", { method: "GET" });
+  }
+
+  /** Kafka pipeline status (bus runs server-side; app uses HTTP/SSE, not raw Kafka). */
+  async getKafkaIntegrationStatus() {
+    return this.request("/integrations/kafka/status", { method: "GET" });
+  }
+
+  /**
+   * Live enriched-telemetry events (SSE). Prefer polling status + WebSocket for RN;
+   * pass AbortSignal to stop. Parses `data: {...}` frames.
+   */
+  async consumeKafkaLiveStream(onMessage, options = {}) {
+    const { signal } = options;
+    const token = await AsyncStorage.getItem("userToken");
+    const url = `${this.baseUrl}/integrations/kafka/live`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
+      },
+      signal,
+    });
+    if (!res.ok) {
+      const err = new Error(`Kafka live stream failed: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    if (!res.body?.getReader) {
+      throw new Error("Streaming not supported in this environment");
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+        for (const block of chunks) {
+          const line = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          try {
+            const json = JSON.parse(line.slice(6).trim());
+            onMessage(json);
+          } catch (_) {
+            /* ignore non-JSON keepalives */
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
   }
 
   // DEVICES

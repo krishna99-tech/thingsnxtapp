@@ -40,6 +40,7 @@ export const AuthProvider = ({ children }) => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const wsRef = useRef(null);
   const isReconnecting = useRef(true); // Flag to control WS reconnection
+  const logoutInFlight = useRef(null);
   const messageListeners = useRef(new Set());
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
@@ -229,23 +230,34 @@ export const AuthProvider = ({ children }) => {
   // 🚪 LOGOUT
   // ====================================
   const logout = async () => {
+    if (logoutInFlight.current) {
+      return logoutInFlight.current;
+    }
+    const run = (async () => {
+      try {
+        await API.logout();
+        isReconnecting.current = false; // Prevent WS from reconnecting on logout
+        wsRef.current?.close(4000, "User logged out"); // Use a custom code for intentional closure
+      } catch (err) {
+        console.error("Logout API error:", err);
+      } finally {
+        await AsyncStorage.multiRemove([
+          "userToken",
+          "refreshToken", // And the refresh token
+          "user",
+        ]);
+        setUserToken(null);
+        // Keep username/email for next login screen
+        setDevices([]);
+      }
+      wsRef.current = null;
+    })();
+    logoutInFlight.current = run;
     try {
-      await API.logout();
-      isReconnecting.current = false; // Prevent WS from reconnecting on logout
-      wsRef.current?.close(4000, "User logged out"); // Use a custom code for intentional closure
-    } catch (err) {
-      console.error("Logout API error:", err);
+      await run;
     } finally {
-      await AsyncStorage.multiRemove([
-        "userToken",
-        "refreshToken", // And the refresh token
-        "user",
-      ]);
-      setUserToken(null);
-      // Keep username/email for next login screen
-      setDevices([]);
-    } 
-    wsRef.current = null;
+      logoutInFlight.current = null;
+    }
   };
 
   // Connect the API service to the AuthContext's logout function.

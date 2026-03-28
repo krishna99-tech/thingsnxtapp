@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo, useEffect } from 'react';
+import React, { useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,9 +34,12 @@ import {
 import { showToast } from '../components/Toast';
 import CustomAlert from '../components/CustomAlert';
 import { getThemeColors, alpha } from '../utils/theme';
+import API from '../services/api';
+import { usePlatformConfig } from '../context/PlatformConfigContext';
 
 export default function ConnectedAppsScreen({ navigation }) {
   const { isDarkTheme, user, updateUser } = useContext(AuthContext);
+  const { config: platformConfig } = usePlatformConfig();
   const insets = useSafeAreaInsets();
   const [loadingId, setLoadingId] = useState(null);
   const [alertVisible, setAlertVisible] = useState(false);
@@ -49,8 +52,24 @@ export default function ConnectedAppsScreen({ navigation }) {
     notifications: true,
     apiKey: ''
   });
+  const [kafkaStatus, setKafkaStatus] = useState(null);
 
   const Colors = useMemo(() => getThemeColors(isDarkTheme), [isDarkTheme]);
+
+  const refreshKafkaStatus = useCallback(async () => {
+    try {
+      const s = await API.getKafkaIntegrationStatus();
+      setKafkaStatus(s);
+    } catch {
+      setKafkaStatus({ enabled: false, unreachable: true });
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshKafkaStatus();
+    const t = setInterval(refreshKafkaStatus, 12000);
+    return () => clearInterval(t);
+  }, [refreshKafkaStatus]);
 
   const appsMetadata = useMemo(() => [
     {
@@ -205,6 +224,44 @@ export default function ConnectedAppsScreen({ navigation }) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {showKafkaPipeline ? (
+          <View style={[styles.pipelineCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
+            <View style={styles.pipelineHeader}>
+              <View style={[styles.iconContainer, { backgroundColor: alpha('#231F20', 0.1) }]}>
+                <Layers size={26} color="#231F20" />
+              </View>
+              <View style={styles.textContainer}>
+                <Text style={[styles.appName, { color: Colors.text }]}>Apache Kafka pipeline</Text>
+                <Text style={[styles.appDesc, { color: Colors.textSecondary }]}>
+                  {kafkaStatus == null
+                    ? 'Loading pipeline status…'
+                    : kafkaStatus.unreachable
+                    ? 'Could not load pipeline status (check login / network).'
+                    : kafkaStatus.enabled === false
+                    ? 'Disabled on server (KAFKA_ENABLED=false).'
+                    : `Topic ${kafkaStatus.topic_telemetry ?? 'iot.telemetry.enriched'} · ${
+                        kafkaStatus.messages_produced ?? 0
+                      } messages produced`}
+                </Text>
+                {kafkaStatus && !kafkaStatus.unreachable && kafkaStatus.bootstrap ? (
+                  <Text style={[styles.kafkaMeta, { color: Colors.textSecondary }]}>
+                    Bootstrap: {kafkaStatus.bootstrap}
+                    {kafkaStatus.producer_started ? ' · producer ready' : ' · producer starting…'}
+                  </Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={refreshKafkaStatus} style={styles.pipelineRefresh}>
+                <RefreshCw size={20} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.kafkaHint, { color: Colors.textSecondary }]}>
+              Mobile apps connect through this API (HTTP + optional SSE on /integrations/kafka/live), not directly to brokers.
+            </Text>
+          </View>
+        ) : null}
+
+        {showConnectedAppsSection ? (
+          <>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Available Extensions</Text>
           <View style={[styles.badge, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
@@ -269,6 +326,14 @@ export default function ConnectedAppsScreen({ navigation }) {
             All integrations use industry-standard OAuth2 protocols for secure data exchange.
           </Text>
         </View>
+          </>
+        ) : (
+          <View style={[styles.pipelineCard, { backgroundColor: Colors.surface, borderColor: Colors.border, padding: 20 }]}>
+            <Text style={{ color: Colors.textSecondary, textAlign: 'center' }}>
+              External app integrations are disabled in platform settings. Contact your administrator.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Configuration Modal - Fixed and Styled */}
@@ -445,6 +510,23 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   content: { padding: 20, paddingBottom: 40 },
+  pipelineCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    marginBottom: 20,
+  },
+  pipelineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  pipelineRefresh: {
+    padding: 8,
+    marginLeft: "auto",
+  },
+  kafkaMeta: { fontSize: 12, marginTop: 4, fontWeight: "500" },
+  kafkaHint: { fontSize: 11, marginTop: 10, lineHeight: 16 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
