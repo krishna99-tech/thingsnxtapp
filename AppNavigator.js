@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // Context & Components
 import { useAuth } from "./context/AuthContext";
 import CustomAlert from "./components/CustomAlert";
+import AuthenticatedMaintenanceChrome from "./components/AuthenticatedMaintenanceChrome";
 
 // Screens
 import LoginScreen from "./screens/LoginScreen";
@@ -218,6 +219,29 @@ function MainTabs() {
  * Root Navigator
  * Handles Auth Logic, Global Modals, and Permissions
  */
+const linking = {
+  prefixes: ['thingsnxt://'],
+  config: {
+    screens: {
+      Login: 'login',
+      Signup: 'signup',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
+      MainTabs: {
+        screens: {
+          Home: 'home',
+          Devices: 'devices',
+          Dashboards: 'dashboards',
+          Notifications: 'notifications',
+          Settings: 'settings',
+        },
+      },
+      DeviceDetail: 'device/:id',
+      Profile: 'profile',
+    },
+  },
+};
+
 export default function RootNavigator() {
   const { userToken, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
   const [appState, setAppState] = useState('active');
@@ -274,31 +298,34 @@ export default function RootNavigator() {
       };
 
   return (
-    <NavigationContainer theme={customTheme}>
-      <StatusBar 
-        style={isDarkTheme ? "light" : "dark"}
-        translucent={false}
-        backgroundColor={customTheme.colors.background}
-      />
-      
-      <Stack.Navigator 
-        screenOptions={{ 
-          headerStyle: { 
-            backgroundColor: isDarkTheme ? '#1C1F26' : '#FFFFFF',
-            borderBottomWidth: 1,
-            borderBottomColor: isDarkTheme ? '#30363D' : '#E5E7EB',
-          },
-          headerTintColor: isDarkTheme ? '#E6EDF3' : '#111827',
-          headerTitleStyle: { 
-            fontWeight: '700',
-            letterSpacing: -0.3,
-          },
-          headerShadowVisible: false,
-          cardStyle: {
-            backgroundColor: isDarkTheme ? '#0F1117' : '#F9FAFB',
-          },
-        }}
-      >
+    <NavigationContainer theme={customTheme} linking={linking}>
+      <AuthenticatedMaintenanceChrome userToken={!!userToken}>
+        <View style={{ flex: 1, backgroundColor: customTheme.colors.background }}>
+          <StatusBar
+            style={isDarkTheme ? "light" : "dark"}
+            translucent={false}
+            backgroundColor={customTheme.colors.background}
+          />
+
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <Stack.Navigator
+              screenOptions={{
+                headerStyle: {
+                  backgroundColor: isDarkTheme ? "#1C1F26" : "#FFFFFF",
+                  borderBottomWidth: 1,
+                  borderBottomColor: isDarkTheme ? "#30363D" : "#E5E7EB",
+                },
+                headerTintColor: isDarkTheme ? "#E6EDF3" : "#111827",
+                headerTitleStyle: {
+                  fontWeight: "700",
+                  letterSpacing: -0.3,
+                },
+                headerShadowVisible: false,
+                cardStyle: {
+                  backgroundColor: isDarkTheme ? "#0F1117" : "#F9FAFB",
+                },
+              }}
+            >
         {userToken ? (
           // ============================================
           // Authenticated App Flow
@@ -438,13 +465,16 @@ export default function RootNavigator() {
             />
           </Stack.Group>
         )}
-      </Stack.Navigator>
+            </Stack.Navigator>
+          </View>
 
-      <CustomAlert
-        visible={alertVisible}
-        isDarkTheme={isDarkTheme}
-        {...alertConfig}
-      />
+          <CustomAlert
+            visible={alertVisible}
+            isDarkTheme={isDarkTheme}
+            {...alertConfig}
+          />
+        </View>
+      </AuthenticatedMaintenanceChrome>
     </NavigationContainer>
   );
 }

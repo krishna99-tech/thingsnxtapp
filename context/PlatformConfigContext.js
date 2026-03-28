@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
+import { AppState } from "react-native";
 import { BASE_URL } from "../constants/config";
 
 const PlatformConfigContext = createContext({
@@ -13,7 +14,7 @@ export function PlatformConfigProvider({ children }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       const res = await fetch(`${BASE_URL.replace(/\/$/, "")}/app/config`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -22,15 +23,22 @@ export function PlatformConfigProvider({ children }) {
       setError(null);
     } catch (e) {
       setError(e);
-      if (!config) setConfig(null);
+      setConfig((prev) => prev ?? null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   const value = useMemo(
     () => ({
@@ -39,7 +47,7 @@ export function PlatformConfigProvider({ children }) {
       loading,
       refresh,
     }),
-    [config, error, loading]
+    [config, error, loading, refresh]
   );
 
   return (
