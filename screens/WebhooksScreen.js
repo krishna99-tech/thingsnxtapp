@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,7 +56,7 @@ export default function WebhooksScreen({ navigation }) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  const Colors = getThemeColors(isDarkTheme);
+  const Colors = useMemo(() => getThemeColors(isDarkTheme), [isDarkTheme]);
 
   const fetchWebhooks = useCallback(async () => {
     try {
@@ -80,11 +80,11 @@ export default function WebhooksScreen({ navigation }) {
     fetchWebhooks();
   };
 
-  const handleOpenModal = (webhook = null) => {
+  const handleOpenModal = useCallback((webhook = null) => {
     if (webhook) {
       setEditingWebhook(webhook);
       setUrl(webhook.url);
-      setSecret(webhook.secret === '***' ? '' : webhook.secret || ''); // Don't show masked secret
+      setSecret(webhook.secret === '***' ? '' : webhook.secret || ''); 
       setEvents(Array.isArray(webhook.events) ? webhook.events.join(', ') : webhook.events || 'telemetry_update');
       setIsActive(webhook.active !== false);
     } else {
@@ -95,7 +95,7 @@ export default function WebhooksScreen({ navigation }) {
       setIsActive(true);
     }
     setModalVisible(true);
-  };
+  }, []);
 
   const handleSave = async () => {
     if (!url.trim()) {
@@ -105,23 +105,24 @@ export default function WebhooksScreen({ navigation }) {
 
     setIsSubmitting(true);
     try {
+      // Clean up event list
       const eventList = events.split(',').map(e => e.trim()).filter(Boolean);
+      
       const payload = {
         url: url.trim(),
         events: eventList.length > 0 ? eventList : ['telemetry_update'],
         active: isActive,
+        ...(secret.trim() ? { secret: secret.trim() } : {})
       };
       
-      if (secret.trim()) {
-        payload.secret = secret.trim();
-      }
-
+      const webhookId = editingWebhook?._id || editingWebhook?.id;
+      
       if (editingWebhook) {
-        await api.updateWebhook(editingWebhook._id || editingWebhook.id, payload);
-        showToast.success("Success", "Webhook updated");
+        await api.updateWebhook(webhookId, payload);
+        showToast.success("Updated", "Webhook configuration saved");
       } else {
         await api.createWebhook(payload);
-        showToast.success("Success", "Webhook created");
+        showToast.success("Created", "Successfully registered new webhook");
       }
       
       setModalVisible(false);
@@ -134,7 +135,7 @@ export default function WebhooksScreen({ navigation }) {
     }
   };
 
-  const handleDelete = (webhook) => {
+  const handleDelete = useCallback((webhook) => {
     setAlertConfig({
       type: 'confirm',
       title: 'Delete Webhook',
@@ -158,25 +159,25 @@ export default function WebhooksScreen({ navigation }) {
       ]
     });
     setAlertVisible(true);
-  };
+  }, [fetchWebhooks]);
 
-  const copyToClipboard = async (text) => {
+  const copyToClipboard = useCallback(async (text) => {
     await Clipboard.setStringAsync(text);
     showToast.success("Copied", "Copied to clipboard");
-  };
+  }, []);
 
-  const renderItem = ({ item }) => (
+  const renderItem = useCallback(({ item }) => (
     <View style={[styles.card, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
       <View style={styles.cardHeader}>
         <View style={styles.urlContainer}>
-          <View style={[styles.methodBadge, { backgroundColor: Colors.primary + '20' }]}>
+          <View style={[styles.methodBadge, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
             <Text style={[styles.methodText, { color: Colors.primary }]}>POST</Text>
           </View>
           <Text style={[styles.urlText, { color: Colors.text }]} numberOfLines={1} ellipsizeMode="middle">
             {item.url}
           </Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: item.active ? Colors.success + '20' : Colors.textSecondary + '20' }]}>
+        <View style={[styles.statusBadge, { backgroundColor: item.active ? alpha(Colors.success, 0.1) : alpha(Colors.textSecondary, 0.1) }]}>
           {item.active ? (
             <CheckCircle size={12} color={Colors.success} />
           ) : (
@@ -233,7 +234,7 @@ export default function WebhooksScreen({ navigation }) {
         </View>
       </View>
     </View>
-  );
+  ), [Colors, handleOpenModal, handleDelete, copyToClipboard]);
 
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>

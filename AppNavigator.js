@@ -369,9 +369,9 @@ export default function RootNavigator() {
               name="Profile" 
               component={ProfileScreen} 
               options={{ 
+                headerShown: false,
                 presentation: 'card',
                 animationEnabled: true,
-                headerTitle: 'Profile Settings',
               }} 
             />
 
@@ -379,19 +379,18 @@ export default function RootNavigator() {
               name="ConnectedApps" 
               component={ConnectedAppsScreen} 
               options={{ 
+                headerShown: false,
                 presentation: 'card',
                 animationEnabled: true,
-                headerTitle: 'Connected Applications',
               }} 
             />
-
             <Stack.Screen 
               name="Webhooks" 
               component={WebhooksScreen} 
               options={{ 
+                headerShown: false,
                 presentation: 'card',
                 animationEnabled: true,
-                headerTitle: 'Webhooks Configuration',
               }} 
             />
 

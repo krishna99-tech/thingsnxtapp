@@ -357,18 +357,15 @@ export const AuthProvider = ({ children }) => {
     };
   }, [userToken]);
 
-  const addDevice = async (deviceData) => {
+  const addDevice = useCallback(async (deviceData) => {
     try {
-      // Validate input
       if (!deviceData?.name?.trim()) {
         throw new Error("Device name is required");
       };
       
       const data = await API.addDevice(deviceData);
       if (data) {
-        // Add device to state immediately for optimistic update
         setDevices((prev) => {
-          // Check if device already exists (prevent duplicates)
           const newDeviceId = String(data.id || data._id);
           const exists = prev.some((d) => {
             const deviceId = String(d.id || d._id);
@@ -376,7 +373,6 @@ export const AuthProvider = ({ children }) => {
           });
           
           if (exists) {
-            // Update existing device, preserve telemetry if it exists
             return prev.map((d) => {
               const deviceId = String(d.id || d._id);
               if (deviceId === newDeviceId) {
@@ -392,7 +388,6 @@ export const AuthProvider = ({ children }) => {
               return d;
             });
           }
-          // New device - ensure it has proper initial state and both ID fields
           return [...prev, {
             ...data,
             _id: data._id || data.id,
@@ -409,14 +404,13 @@ export const AuthProvider = ({ children }) => {
       const errorMessage = err.response?.data?.detail || err.message || "Failed to add device";
       throw new Error(errorMessage);
     };
-  };
+  }, []);
 
-  const updateDevice = async (deviceId, deviceData) => {
+  const updateDevice = useCallback(async (deviceId, deviceData) => {
     try {
       if (!deviceData?.name?.trim()) {
         throw new Error("Device name cannot be empty");
       }
-      // Assuming you have an API.updateDevice method in your services
       if (typeof API.updateDevice !== 'function') {
         console.warn("API.updateDevice is not implemented. Skipping API call.");
         return;
@@ -438,7 +432,7 @@ export const AuthProvider = ({ children }) => {
       const errorMessage = err.response?.data?.detail || err.message || "Failed to update device";
       throw new Error(errorMessage);
     }
-  };
+  }, []);
 
   const bulkUpdateDeviceStatus = async (deviceIds, status) => {
     try {
@@ -470,10 +464,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const deleteDevice = async (deviceId) => {
+  const deleteDevice = useCallback(async (deviceId) => {
     try {
       await API.deleteDevice(deviceId);
-      // Update state immediately - handle both id and _id formats
       setDevices((prev) => 
         prev.filter((d) => {
           const dId = d.id || d._id;
@@ -481,7 +474,6 @@ export const AuthProvider = ({ children }) => {
           return dId !== targetId && String(dId) !== String(targetId);
         })
       );
-      // Don't show alert here - let the calling component handle it
       return true;
     } catch (err) {
       console.error("Delete device error:", err);
@@ -490,15 +482,20 @@ export const AuthProvider = ({ children }) => {
       });
       throw err;
     };
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
       const updatedUser = await API.getProfile();
       if (updatedUser) {
         // Log the received status for debugging (hidden from user but helps with re-renders)
-        setUser(prev => ({ ...prev, ...updatedUser }));
-        await AsyncStorage.setItem("user", JSON.stringify({ ...(user || {}), ...updatedUser }));
+        setUser(prev => {
+          const newUser = { ...(prev || {}), ...updatedUser };
+          AsyncStorage.setItem("user", JSON.stringify(newUser)).catch(err => 
+            console.error("Failed to save user in refreshUser:", err)
+          );
+          return newUser;
+        });
         if (updatedUser.username) setUsername(updatedUser.username);
         if (updatedUser.email) setEmail(updatedUser.email);
         return updatedUser;
@@ -506,14 +503,12 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Refresh user error:", err);
     }
-  };
+  }, []);
 
-  const updateUser = async (userData) => {
+  const updateUser = useCallback(async (userData) => {
     try {
-      // Assuming you have an API.updateUser method
       const updatedUser = await API.updateUser(userData);
       if (updatedUser) {
-        // Update state and AsyncStorage
         if (updatedUser.username) {
           setUsername(updatedUser.username);
           await AsyncStorage.setItem("username", updatedUser.username);
@@ -522,7 +517,6 @@ export const AuthProvider = ({ children }) => {
           setEmail(updatedUser.email);
           await AsyncStorage.setItem("email", updatedUser.email);
         }
-        // Update full user object with all fields
         setUser(prev => {
           const newUser = { ...prev, ...updatedUser };
           AsyncStorage.setItem("user", JSON.stringify(newUser));
@@ -534,7 +528,7 @@ export const AuthProvider = ({ children }) => {
       console.error("Update user error:", err);
       throw new Error(err.response?.data?.detail || "Failed to update profile.");
     }
-  };
+  }, []);
   // ====================================
   // 🌐 TELEMETRY
   // ====================================

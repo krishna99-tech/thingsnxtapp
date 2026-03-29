@@ -51,6 +51,7 @@ import MenuItem from "../components/settings/MenuItem";
 import { showToast } from "../components/Toast";
 import api from "../services/api";
 import { getThemeColors, alpha } from "../utils/theme";
+import { usePlatformConfig } from "../context/PlatformConfigContext";
 
 const { width } = Dimensions.get('window');
 
@@ -66,6 +67,8 @@ export default function SettingsScreen() {
     setThemePreference,
     updateUser,
   } = useContext(AuthContext);
+
+  const { config: platformConfig } = usePlatformConfig();
   
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -327,21 +330,21 @@ export default function SettingsScreen() {
       title: "Integrations",
       icon: Zap,
       items: [
-        {
+        platformConfig?.mobile_app?.feature_flags?.connected_apps !== false && {
           icon: { component: <Link size={20} color={Colors.secondary} />, bgColor: alpha(Colors.secondary, 0.12) },
           title: "Connected Apps",
           subtitle: "Manage third-party services",
           onPress: () => navigation.navigate("ConnectedApps"),
           rightComponent: { type: 'chevron' },
         },
-        {
+        platformConfig?.mobile_app?.feature_flags?.webhooks !== false && {
           icon: { component: <Webhook size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Webhooks",
           subtitle: "Real-time event callbacks",
           onPress: () => navigation.navigate("Webhooks"),
           rightComponent: { type: 'chevron' },
         },
-      ],
+      ].filter(Boolean),
     },
     {
       title: "Data Management",
@@ -371,19 +374,19 @@ export default function SettingsScreen() {
           icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: alpha(Colors.primary, 0.12) },
           title: "Help Center",
           subtitle: "FAQs and support articles",
-          onPress: () => openWebView("https://thingsnxt.vercel.app/support", "Help Center"),
+          onPress: () => openWebView(platformConfig?.branding?.docs_url || "https://thingsnxt.vercel.app/support", "Help Center"),
           rightComponent: { type: 'chevron' }
         },
         {
           icon: { component: <Info size={20} color={Colors.success} />, bgColor: alpha(Colors.success, 0.12) },
           title: "About",
-          subtitle: "App version and information",
-          onPress: () => openWebView("https://thingsnxt.vercel.app/", "About ThingsNXT"),
-          rightComponent: { type: 'chevron' }
+          subtitle: `App information for ${platformConfig?.branding?.app_display_name || "ThingsNXT"}`,
+          onPress: () => openWebView(platformConfig?.branding?.frontend_url || "https://thingsnxt.vercel.app/", "About"),
+          rightContent: { type: 'chevron' }
         },
       ],
     },
-  ], [Colors, user, username, devices, dashboardCount, themePreference, selectedLanguage, notificationsEnabled, isDarkTheme]);
+  ], [Colors, user, username, devices, dashboardCount, themePreference, selectedLanguage, notificationsEnabled, isDarkTheme, platformConfig]);
 
   const onlineDevices = devices?.filter(d => d.status === "online").length || 0;
   const totalDevices = devices?.length || 0;
@@ -522,10 +525,10 @@ export default function SettingsScreen() {
         {/* Version Footer */}
         <View style={styles.footer}>
           <Text style={[styles.version, { color: Colors.textMuted }]}>
-            ThingsNXT v1.0.0
+            {platformConfig?.branding?.app_display_name || "ThingsNXT"} v1.0.0
           </Text>
           <Text style={[styles.footerText, { color: Colors.textMuted }]}>
-            © 2024 All rights reserved
+            {platformConfig?.branding?.copyright_text || "© 2024 All rights reserved"}
           </Text>
         </View>
       </ScrollView>

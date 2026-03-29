@@ -43,8 +43,8 @@ export default function AnimatedSplashScreen({ children }) {
         logoOpacity.value = withTiming(1, { duration: 800 });
         logoScale.value = withSpring(1);
 
-        // Force a minimum splash time of 2s to show branding
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Force a minimum splash time of 1.2s to show branding
+        await new Promise(resolve => setTimeout(resolve, 1200));
       } catch (e) {
         console.warn(e);
       } finally {

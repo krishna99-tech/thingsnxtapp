@@ -29,7 +29,8 @@ import {
   ShieldCheck, 
   Zap, 
   Copy,
-  ArrowRight
+  ArrowRight,
+  Layers
 } from 'lucide-react-native';
 import { showToast } from '../components/Toast';
 import CustomAlert from '../components/CustomAlert';
@@ -55,6 +56,10 @@ export default function ConnectedAppsScreen({ navigation }) {
   const [kafkaStatus, setKafkaStatus] = useState(null);
 
   const Colors = useMemo(() => getThemeColors(isDarkTheme), [isDarkTheme]);
+  const flags = useMemo(() => platformConfig?.mobile_app?.feature_flags ?? {}, [platformConfig]);
+  
+  const showKafkaPipeline = flags.kafka_pipeline_card !== false;
+  const showConnectedAppsSection = flags.connected_apps !== false;
 
   const refreshKafkaStatus = useCallback(async () => {
     try {
