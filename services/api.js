@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "../constants/config";
-import { AuthContext } from "../context/AuthContext"; // We'll need this for logout
 
 const SHOULD_LOG = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_API_LOGS === "true";
 const debugLog = (...args) => {

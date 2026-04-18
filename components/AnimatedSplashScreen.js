@@ -98,8 +98,12 @@ export default function AnimatedSplashScreen({ children }) {
       
       {!isSplashAnimationComplete && (
         <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.splashContainer, animatedContainerStyle]}
+          style={[
+            StyleSheet.absoluteFill,
+            styles.splashContainer,
+            animatedContainerStyle,
+            { pointerEvents: "none" },
+          ]}
         >
           <LinearGradient
             colors={['#0f172a', '#1e293b', '#0f172a']}

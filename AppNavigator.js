@@ -7,7 +7,7 @@ import {
   PermissionsAndroid,
   Linking,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   Pressable,
 } from "react-native";
 import { 
@@ -47,12 +47,28 @@ import WebhooksScreen from "./screens/WebhooksScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-const { width: screenWidth } = Dimensions.get("window");
+const WEB_APP_MAX_WIDTH = 1280;
 
 // Helper function for alpha colors
 const alpha = (hex, opacity) => {
   const o = Math.round(opacity * 255).toString(16).padStart(2, '0');
   return hex + o;
+};
+
+const getWebLayoutMetrics = (width) => {
+  if (width >= 1680) {
+    return { maxWidth: 1440, gutter: 32 };
+  }
+  if (width >= 1280) {
+    return { maxWidth: 1280, gutter: 24 };
+  }
+  if (width >= 1024) {
+    return { maxWidth: 1100, gutter: 20 };
+  }
+  if (width >= 768) {
+    return { maxWidth: 980, gutter: 16 };
+  }
+  return { maxWidth: WEB_APP_MAX_WIDTH, gutter: 0 };
 };
 
 /**
@@ -61,6 +77,9 @@ const alpha = (hex, opacity) => {
  */
 function CustomTabBar({ state, descriptors, navigation, isDarkTheme }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const webLayout = getWebLayoutMetrics(width);
+  const isWeb = Platform.OS === "web";
   
   const tabColors = {
     darkBackground: "#1C1F26",
@@ -79,7 +98,11 @@ function CustomTabBar({ state, descriptors, navigation, isDarkTheme }) {
   return (
     <View style={[
       styles.customTabBarContainer,
-      { paddingBottom: Math.max(insets.bottom, 16) }
+      {
+        paddingBottom: Math.max(insets.bottom, 16),
+        alignItems: isWeb ? "center" : "stretch",
+        paddingHorizontal: isWeb ? webLayout.gutter : 0,
+      }
     ]}>
       <View style={[
         styles.customTabBar,
@@ -87,6 +110,7 @@ function CustomTabBar({ state, descriptors, navigation, isDarkTheme }) {
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderTopColor: borderColor,
+          maxWidth: isWeb ? webLayout.maxWidth : "100%",
         }
       ]}>
         {/* Gradient Accent Line */}
@@ -244,6 +268,9 @@ const linking = {
 
 export default function RootNavigator() {
   const { userToken, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
+  const { width } = useWindowDimensions();
+  const webLayout = getWebLayoutMetrics(width);
+  const isWeb = Platform.OS === "web";
   const [appState, setAppState] = useState('active');
 
   useEffect(() => {
@@ -300,14 +327,28 @@ export default function RootNavigator() {
   return (
     <NavigationContainer theme={customTheme} linking={linking}>
       <AuthenticatedMaintenanceChrome userToken={!!userToken}>
-        <View style={{ flex: 1, backgroundColor: customTheme.colors.background }}>
+        <View style={{ flex: 1, height: Platform.OS === 'web' ? '100vh' : '100%', backgroundColor: customTheme.colors.background }}>
           <StatusBar
             style={isDarkTheme ? "light" : "dark"}
             translucent={false}
             backgroundColor={customTheme.colors.background}
           />
 
-          <View style={{ flex: 1, minHeight: 0 }}>
+          <View
+            style={[
+              styles.stackHost,
+              {
+                alignItems: isWeb ? "center" : "stretch",
+                paddingHorizontal: isWeb ? webLayout.gutter : 0,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.stackFrame,
+                { maxWidth: isWeb ? webLayout.maxWidth : "100%" },
+              ]}
+            >
             <Stack.Navigator
               screenOptions={{
                 headerStyle: {
@@ -419,16 +460,15 @@ export default function RootNavigator() {
               }} 
             />
           </Stack.Group>
-        ) : (
+                ) : (
           // ============================================
           // Authentication Flow
           // ============================================
           <Stack.Group screenOptions={{ 
             headerShown: false, 
-            presentation: 'transparentModal',
             animationEnabled: true,
             cardStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              backgroundColor: isDarkTheme ? '#0F1117' : '#F9FAFB',
             }
           }}>
             <Stack.Screen 
@@ -463,8 +503,9 @@ export default function RootNavigator() {
               }}
             />
           </Stack.Group>
-        )}
+                )}
             </Stack.Navigator>
+            </View>
           </View>
 
           <CustomAlert
@@ -482,12 +523,22 @@ export default function RootNavigator() {
 // Styles
 // ============================================
 const styles = StyleSheet.create({
+  stackHost: {
+    flex: 1,
+    minHeight: 0,
+  },
+  stackFrame: {
+    flex: 1,
+    width: "100%",
+    alignSelf: "center",
+  },
   // Custom Tab Bar
   customTabBarContainer: {
     backgroundColor: 'transparent',
   },
   customTabBar: {
     flexDirection: 'row',
+    width: '100%',
     height: 70,
     borderTopWidth: 1,
     paddingHorizontal: 12,

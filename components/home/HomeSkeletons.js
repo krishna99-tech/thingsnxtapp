@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 const CARD_PADDING = 20;
 const CARD_GAP = 14;
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 
 const Shimmer = ({ children, style, isDarkTheme }) => {
   const shimmerAnimatedValue = React.useRef(new Animated.Value(-1)).current;
@@ -14,7 +15,7 @@ const Shimmer = ({ children, style, isDarkTheme }) => {
       Animated.timing(shimmerAnimatedValue, {
         toValue: 1,
         duration: 1400,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       })
     );
     shimmerAnimation.start();

@@ -362,7 +362,8 @@ export default function HomeScreen() {
           >
             <FlatList
               scrollEnabled={false}
-              contentContainerStyle={styles.devicesGrid}
+              contentContainerStyle={styles.devicesListContent}
+              columnWrapperStyle={styles.devicesGridRow}
               data={loading ? Array(2).fill({}).map((_, i) => ({key: `fs-${i}`})) : favoriteDevices}
               renderItem={loading ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
               keyExtractor={(item, index) => String(item.id || item._id || `skeleton-fav-${index}`)}
@@ -379,7 +380,8 @@ export default function HomeScreen() {
         >
           <FlatList
             scrollEnabled={false}
-            contentContainerStyle={styles.devicesGrid}
+            contentContainerStyle={styles.devicesListContent}
+            columnWrapperStyle={styles.devicesGridRow}
             data={loading && recentDevices.length === 0 ? Array(2).fill({}).map((_, i) => ({key: `rs-${i}`})) : recentDevices}
             renderItem={loading && recentDevices.length === 0 ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
             keyExtractor={(item, index) => String(item.id || item._id || `skeleton-rec-${index}`)}
@@ -564,10 +566,11 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingRight: CARD_PADDING,
   },
-  devicesGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: CARD_GAP,
+  devicesListContent: {
+    paddingBottom: 4,
+  },
+  devicesGridRow: {
+    justifyContent: "space-between",
   },
 
   // Distribution
