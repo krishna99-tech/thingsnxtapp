@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
@@ -25,6 +26,18 @@ const PasswordRequirement = ({ met, text }) => (
       <Text style={styles.requirementText}>{text}</Text>
     </View>
   );
+
+function extractResetTokenFromUrl(url) {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    const token = parsed.searchParams.get("token");
+    return token ? String(token).toUpperCase() : "";
+  } catch {
+    const match = url.match(/[?&]token=([^&#]+)/i);
+    return match?.[1] ? decodeURIComponent(match[1]).toUpperCase() : "";
+  }
+}
 
 export default function ResetPasswordScreen({ navigation, route }) {
   const [token, setToken] = useState(route?.params?.token || '');
@@ -47,6 +60,30 @@ export default function ResetPasswordScreen({ navigation, route }) {
     () => Object.values(passwordValidation).every(Boolean),
     [passwordValidation]
   );
+
+  useEffect(() => {
+    const routeToken = route?.params?.token;
+    if (routeToken) {
+      setToken(String(routeToken).toUpperCase());
+    }
+  }, [route?.params?.token]);
+
+  useEffect(() => {
+    const applyTokenFromUrl = (url) => {
+      const nextToken = extractResetTokenFromUrl(url);
+      if (nextToken) setToken(nextToken);
+    };
+
+    Linking.getInitialURL()
+      .then((url) => applyTokenFromUrl(url))
+      .catch(() => {});
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      applyTokenFromUrl(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const handlePasswordChange = (pwd) => {
     setPassword(pwd);

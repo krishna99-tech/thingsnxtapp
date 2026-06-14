@@ -6,7 +6,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { View, ActivityIndicator, useColorScheme } from "react-native";
+import { useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL, WS_URL } from "../constants/config";
@@ -884,17 +884,7 @@ const connectWebSocket = (token) => {
   //   }
   // }, [devices]);
 
-  // While the app is restoring the session from storage, show a loading screen.
-  // This prevents the rest of the app from rendering with incomplete auth data.
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-
+  // Always expose auth context; gate UI in consumers when `loading` is true.
   return (
     <SafeAreaProvider>
       <AuthContext.Provider
@@ -912,9 +902,9 @@ const connectWebSocket = (token) => {
           fetchDevices,
           updateUser,
           refreshUser,
-          handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
+          handleRealtimeMessage,
           fetchTelemetry,
-          connectWebSocket, // Keep for potential manual reconnects
+          connectWebSocket,
           login,
           signup,
           logout,

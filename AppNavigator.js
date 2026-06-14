@@ -4,6 +4,7 @@ import {
   Platform,
   StyleSheet,
   Text,
+  ActivityIndicator,
   PermissionsAndroid,
   Linking,
   Animated,
@@ -14,7 +15,8 @@ import {
   NavigationContainer, 
   DefaultTheme, 
   DarkTheme, 
-  useTheme 
+  useTheme,
+  getStateFromPath,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -244,13 +246,25 @@ function MainTabs() {
  * Handles Auth Logic, Global Modals, and Permissions
  */
 const linking = {
-  prefixes: ['thingsnxt://'],
+  prefixes: [
+    'thingsnxt://',
+    'com.electrogadgedc.ThingsNXT://callback',
+    'https://thingsnxt.vercel.app',
+  ],
   config: {
     screens: {
       Login: 'login',
       Signup: 'signup',
       ForgotPassword: 'forgot-password',
-      ResetPassword: 'reset-password',
+      ResetPassword: {
+        path: 'reset-password',
+        parse: {
+          token: (token) => (token ? String(token).toUpperCase() : token),
+        },
+        stringify: {
+          token: (token) => (token ? String(token).toUpperCase() : token),
+        },
+      },
       MainTabs: {
         screens: {
           Home: 'home',
@@ -266,12 +280,64 @@ const linking = {
   },
 };
 
+function extractPathFromURL(prefixes, url) {
+  for (const prefix of prefixes) {
+    const normalizedPrefix = prefix.endsWith("://") ? prefix : `${prefix}://`;
+    if (url.startsWith(normalizedPrefix)) {
+      return url.slice(normalizedPrefix.length);
+    }
+    if (url.startsWith(prefix)) {
+      return url.slice(prefix.length);
+    }
+  }
+  return undefined;
+}
+
+function parseDeepLinkState(url) {
+  if (!url) return undefined;
+  try {
+    const path = extractPathFromURL(linking.prefixes, url);
+    if (!path) return undefined;
+    return getStateFromPath(path, linking.config);
+  } catch (error) {
+    console.warn("[DeepLink] Failed to parse URL:", url, error);
+    return undefined;
+  }
+}
+
 export default function RootNavigator() {
-  const { userToken, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
+  const { userToken, loading: authLoading, isDarkTheme, alertVisible, alertConfig, showAlert } = useAuth();
   const { width } = useWindowDimensions();
   const webLayout = getWebLayoutMetrics(width);
   const isWeb = Platform.OS === "web";
   const [appState, setAppState] = useState('active');
+  const [navReady, setNavReady] = useState(false);
+  const [initialState, setInitialState] = useState(undefined);
+
+  // Resolve cold-start deep links after auth restore (required for conditional auth stacks).
+  useEffect(() => {
+    if (authLoading) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const url = await Linking.getInitialURL();
+        if (url && !cancelled) {
+          const state = parseDeepLinkState(url);
+          if (state) setInitialState(state);
+        }
+      } catch (error) {
+        console.warn("[DeepLink] getInitialURL failed:", error);
+      } finally {
+        if (!cancelled) setNavReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading]);
 
   useEffect(() => {
     const requestPermission = async () => {
@@ -324,8 +390,16 @@ export default function RootNavigator() {
         }
       };
 
+  if (authLoading || !navReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
   return (
-    <NavigationContainer theme={customTheme} linking={linking}>
+    <NavigationContainer theme={customTheme} linking={linking} initialState={initialState}>
       <AuthenticatedMaintenanceChrome userToken={!!userToken}>
         <View style={{ flex: 1, height: Platform.OS === 'web' ? '100vh' : '100%', backgroundColor: customTheme.colors.background }}>
           <StatusBar
@@ -350,6 +424,7 @@ export default function RootNavigator() {
               ]}
             >
             <Stack.Navigator
+              initialRouteName={userToken ? "MainTabs" : "Login"}
               screenOptions={{
                 headerStyle: {
                   backgroundColor: isDarkTheme ? "#1C1F26" : "#FFFFFF",
@@ -367,6 +442,28 @@ export default function RootNavigator() {
                 },
               }}
             >
+            {/* Always registered so password-reset email deep links work logged in or out */}
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+              options={{
+                headerShown: !userToken,
+                presentation: "card",
+                animationEnabled: true,
+                headerTitle: "Forgot Password",
+              }}
+            />
+            <Stack.Screen
+              name="ResetPassword"
+              component={ResetPasswordScreen}
+              options={{
+                headerShown: !userToken,
+                presentation: "card",
+                animationEnabled: true,
+                headerTitle: "Reset Password",
+              }}
+            />
+
         {userToken ? (
           // ============================================
           // Authenticated App Flow
@@ -435,16 +532,6 @@ export default function RootNavigator() {
               }} 
             />
 
-            <Stack.Screen 
-              name="ForgotPassword" 
-              component={ForgotPasswordScreen} 
-              options={{ 
-                presentation: 'card',
-                animationEnabled: true,
-                headerTitle: 'Reset Password',
-              }} 
-            />
-            
             {/* Custom Transparent Bottom Sheet Screen */}
             <Stack.Screen 
               name="WebView" 
@@ -484,20 +571,6 @@ export default function RootNavigator() {
             <Stack.Screen 
               name="Signup" 
               component={SignupScreen}
-              options={{
-                gestureEnabled: true,
-              }}
-            />
-            <Stack.Screen 
-              name="ForgotPassword" 
-              component={ForgotPasswordScreen}
-              options={{
-                gestureEnabled: true,
-              }}
-            />
-            <Stack.Screen 
-              name="ResetPassword" 
-              component={ResetPasswordScreen}
               options={{
                 gestureEnabled: true,
               }}
